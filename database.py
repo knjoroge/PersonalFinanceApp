@@ -97,6 +97,10 @@ def add_transaction(date, amount, category, t_type, description):
         ValueError: If the amount is zero or negative, the category is
                     blank, or the type isn't "Income" or "Expense".
     """
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Date must be in YYYY-MM-DD format (e.g. '2026-01-15').")
     if amount <= 0:
         raise ValueError("Amount must be positive.")
     if not category or not category.strip():
@@ -155,6 +159,10 @@ def update_transaction(transaction_id, date, amount, category, t_type, descripti
     Raises:
         ValueError: If the amount is zero or negative.
     """
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Date must be in YYYY-MM-DD format (e.g. '2026-01-15').")
     if amount <= 0:
         raise ValueError("Amount must be positive.")
     with sqlite3.connect(DB_PATH) as conn:

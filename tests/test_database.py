@@ -87,6 +87,11 @@ class TestTransactions:
         dates = list(df["date"])
         assert dates == sorted(dates, reverse=True)
 
+    def test_reject_invalid_date_format(self):
+        """A date not in YYYY-MM-DD format should be rejected with a clear error."""
+        with pytest.raises(ValueError, match="Date must be in YYYY-MM-DD format"):
+            db.add_transaction("banana", 50.0, "Food", "Expense", "Bad")
+
     def test_reject_negative_amount(self):
         """A negative amount should be rejected with a clear error."""
         with pytest.raises(ValueError, match="Amount must be positive"):
