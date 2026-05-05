@@ -2,21 +2,36 @@
 
 A friendly, easy-to-use app for managing your personal finances — built with Python.
 
-Whether you're just starting to track your spending or looking for a smarter way to manage your money, this app gives you a clear picture of where your money goes, helps you set budgets, and even offers AI-powered financial advice.
+Track your spending, set budgets, monitor your net worth, and get AI-powered financial advice — all from your browser.
+
+---
+
+## Quick Start (30 seconds)
+
+If you have Python 3.8+ and `make` installed, this is the fastest way to get running:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/PersonalFinanceApp.git
+cd PersonalFinanceApp
+make setup   # Creates a virtual environment and installs everything
+make run     # Opens the app in your browser
+```
+
+That's it! The app will open at `http://localhost:8501`.
+
+> **Don't have `make`?** See [Manual Setup](#manual-setup) below.
 
 ---
 
 ## What Does It Do?
 
-In short, this app helps you:
-
-- **See your money at a glance** — A visual dashboard shows your income, expenses, savings rate, and net worth in one place.
-- **Track every dollar** — Log income and expenses with categories like "Food", "Housing", or "Salary", and browse your full history.
-- **Set spending budgets** — Choose a monthly limit for any category (e.g. "$500/month on Food") and watch a progress bar so you know when you're getting close.
-- **Import from your bank** — Upload a CSV file exported from your bank to bulk-add transactions, or download your data as a backup.
-- **Monitor your net worth** — Enter the balances of your bank accounts, retirement funds, and investments to see your total net worth.
+- **See your money at a glance** — A visual dashboard shows income, expenses, savings rate, and net worth.
+- **Track every dollar** — Log income and expenses with categories and browse your full history.
+- **Set spending budgets** — Choose a monthly limit for any category and watch colour-coded progress bars.
+- **Import from your bank** — Upload a CSV from your bank to bulk-add transactions, or download your data.
+- **Monitor your net worth** — Enter balances for bank accounts, retirement funds, and investments.
 - **Back up your data** — Download your entire database to keep a safe copy, and restore it any time.
-- **Get AI advice** — Ask an AI financial advisor (powered by Google Gemini) questions about your finances, and use built-in calculators for budgeting rules and compound interest.
+- **Get AI advice** — Ask an AI assistant (powered by Google Gemini) questions about your finances.
 
 ---
 
@@ -24,97 +39,76 @@ In short, this app helps you:
 
 | Feature | What It Does |
 |---|---|
-| 📊 **Dashboard** | Shows charts of your spending by category, income vs. expenses over time, and key stats like savings rate. |
-| 🎯 **Category Budgets** | Set a spending limit per category and see colour-coded progress bars (green / yellow / red). |
-| 💸 **Transactions** | Add, edit, or delete individual income and expense entries. Filter and paginate through your history. |
-| 📁 **CSV Import/Export** | Upload a spreadsheet from your bank to import transactions in bulk, or download your data. |
-| 🏦 **Net Worth & Accounts** | Track balances across checking, savings, 401k, brokerage, and other accounts. |
-| 💾 **Backup & Restore** | Download your database file for safekeeping. Restore from a backup if anything goes wrong. |
-| 🧠 **AI Financial Advisor** | Chat with an AI assistant that knows your financial data. Includes a 50/30/20 budget calculator and a compound interest visualiser. |
+| 📊 **Dashboard** | Charts of spending by category, income vs expenses over time, and key stats. |
+| 🎯 **Category Budgets** | Set spending limits per category with green/yellow/red progress bars. |
+| 💸 **Transactions** | Add, edit, delete, filter, and paginate through your transaction history. |
+| 📁 **CSV Import/Export** | Upload bank spreadsheets or download your data as CSV. |
+| 🏦 **Net Worth & Accounts** | Track balances across checking, savings, 401k, brokerage, etc. |
+| 💾 **Backup & Restore** | Download/restore your database file for safekeeping. |
+| 🧠 **AI Advisor** | Chat with an AI that knows your data. Includes 50/30/20 and compound interest calculators. |
 
 ---
 
-## What You'll Need Before Starting
+## What You'll Need
 
-1. **Python 3.8 or newer** — This is the programming language the app is built with.
-   - You can check if you have it by opening a terminal and typing: `python --version`
-   - If you don't have it, download it free from [python.org](https://www.python.org/downloads/)
-
-2. **A Google Gemini API Key** *(optional)* — Only needed if you want to use the AI Advisor chat feature.
-   - Get one for free at [Google AI Studio](https://aistudio.google.com/app/apikey)
+1. **Python 3.8+** — Check with `python --version`. Download from [python.org](https://www.python.org/downloads/) if needed.
+2. **A Gemini API Key** *(optional)* — Only for the AI chat feature. Get one free at [Google AI Studio](https://aistudio.google.com/app/apikey).
 
 ---
 
-## How to Set Up the App
+## Manual Setup
 
-Follow these steps in your terminal (the command-line application on your computer):
+If you don't have `make`, follow these steps in your terminal:
 
-### Step 1 — Download the project
-
-If you received this as a zip file, unzip it. If you're cloning from GitHub:
+### 1. Download the project
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/PersonalFinanceApp.git
 cd PersonalFinanceApp
 ```
 
-### Step 2 — Create an isolated environment (recommended)
-
-This keeps the app's software packages separate from the rest of your computer:
+### 2. Create a virtual environment
 
 ```bash
 python -m venv venv
 ```
 
-Then activate it:
+Activate it:
+- **Mac / Linux:** `source venv/bin/activate`
+- **Windows:** `venv\Scripts\activate`
 
-- **Mac / Linux:**
-  ```bash
-  source venv/bin/activate
-  ```
-- **Windows:**
-  ```bash
-  venv\Scripts\activate
-  ```
+You'll see `(venv)` at the start of your prompt when it's active.
 
-You'll know it worked if you see `(venv)` at the start of your terminal prompt.
-
-### Step 3 — Install the required packages
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-This downloads everything the app needs to run (it may take a minute).
-
----
-
-## How to Use the App
-
-### Starting the app
+### 4. Start the app
 
 ```bash
 streamlit run app.py
 ```
 
-This will open the app in your web browser automatically (usually at `http://localhost:8501`).
+---
 
-### Getting around
+## Getting Around
 
 Use the **sidebar on the left** to switch between views:
 
 | View | What to do there |
 |---|---|
-| **Dashboard** | See your financial overview. Add data in other tabs first to see charts appear! |
-| **Transactions** | Add your income and expenses. Use CSV Import/Export to upload bank data or download a backup. |
-| **Net Worth & Accounts** | Enter current balances for your bank and investment accounts. Also has database backup/restore. |
-| **AI Advisor** | Enter your Gemini API key at the top, then ask the AI questions about your finances. |
+| **Dashboard** | See your financial overview. Add data in other tabs first! |
+| **Transactions** | Add income and expenses. Use CSV Import/Export for bulk data. |
+| **Net Worth & Accounts** | Enter current balances for your accounts. Has backup/restore too. |
+| **AI Advisor** | Enter your Gemini API key, then ask the AI questions about your finances. |
 
 ---
 
-## Importing Transactions from a Spreadsheet (CSV)
+## Importing Transactions from CSV
 
-If you want to import transactions from your bank, save or export them as a `.csv` file with these columns:
+Export transactions from your bank as a `.csv` file with these columns:
 
 | Column | Required? | Example |
 |---|---|---|
@@ -124,65 +118,60 @@ If you want to import transactions from your bank, save or export them as a `.cs
 | `type` | ✅ Yes | `Income` or `Expense` |
 | `description` | ❌ Optional | `Grocery shopping` |
 
-> **Tip:** Most banks let you export your transaction history as CSV. You may need to rename the columns to match the table above.
+> **Tip:** Most banks let you export as CSV. You may need to rename columns to match the table above.
 
 ---
 
-## Running the Tests
-
-The project includes automated tests to make sure everything works correctly. To run them:
+## Running Tests
 
 ```bash
-# Run all tests and show details
-python -m pytest tests/ -v
+make test
+```
 
-# Run tests and also show how much code is covered
+Or manually:
+
+```bash
+python -m pytest tests/ -v
 python -m pytest tests/ -v --cov=. --cov-report=term-missing
 ```
 
 ---
 
-## Where Is My Data Stored?
+## Where Is My Data?
 
-All your data is stored in a **local file called `finance.db`** on your own computer — nothing is sent to the cloud (except AI Advisor questions, which go to Google's Gemini API if you use that feature).
+Everything is stored in a **local file called `finance.db`** on your computer — nothing goes to the cloud (except AI questions, which go to Google Gemini if you use that feature).
 
-The database is created automatically the first time you start the app.
-
-If you want to store the database somewhere else, you can set a custom path before starting:
-
+Custom storage path:
 ```bash
-FINANCE_DB_PATH=/path/to/my/custom.db streamlit run app.py
+FINANCE_DB_PATH=/path/to/custom.db streamlit run app.py
 ```
 
 ---
 
 ## Project Structure
 
-Here's how the project files are organised — you don't need to understand this to use the app, but it's helpful if you want to explore or contribute:
-
 ```
 PersonalFinanceApp/
-├── app.py                  # The main file that starts the app
-├── database.py             # Handles all data storage and retrieval
-├── requirements.txt        # Lists the software packages the app needs
-├── .env                    # Stores private settings like API keys (not shared)
-├── .gitignore              # Tells Git which files to ignore
+├── app.py              # Main entry point — starts the app
+├── database.py         # All data storage and retrieval
+├── Makefile            # One-command setup and run
+├── requirements.txt    # Python package dependencies
+├── .env                # Private settings (not shared)
+├── .gitignore          # Files Git should ignore
 ├── .streamlit/
-│   └── config.toml         # Visual theme settings for the app
-├── views/                  # Each screen/page of the app
-│   ├── __init__.py         # Marks this folder as a Python package
-│   ├── dashboard.py        # The main dashboard with charts and budgets
-│   ├── transactions.py     # The page for adding and viewing transactions
-│   ├── accounts.py         # The page for tracking account balances
-│   └── advisor.py          # The AI advisor chat and calculators
-└── tests/                  # Automated tests to verify the app works
-    ├── __init__.py         # Marks this folder as a Python package
-    ├── conftest.py         # Shared setup used by all tests
-    └── test_database.py    # Tests for all database operations
+│   └── config.toml     # Visual theme settings
+├── views/              # Each screen of the app
+│   ├── dashboard.py    # Dashboard with charts and budgets
+│   ├── transactions.py # Adding and viewing transactions
+│   ├── accounts.py     # Account balances and backups
+│   └── advisor.py      # AI advisor and calculators
+└── tests/              # Automated tests
+    ├── conftest.py     # Shared test setup
+    └── test_database.py
 ```
 
 ---
 
 ## License
 
-This is a personal project. Feel free to use and modify it for your own needs.
+Personal project. Feel free to use and modify for your own needs.
