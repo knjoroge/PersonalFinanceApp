@@ -8,16 +8,26 @@ Track your spending, set budgets, monitor your net worth, and get AI-powered fin
 
 ## Quick Start
 
+If you have Python 3.8+ and `make` installed, this is the fastest way to get running:
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/PersonalFinanceApp.git
 cd PersonalFinanceApp
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-streamlit run app.py
+make setup   # Creates a virtual environment and installs everything
+make run     # Opens the app in your browser
 ```
 
 That's it! The app will open at `http://localhost:8501`.
+
+You can also type `make` on its own to see all available commands.
+
+> **Don't have `make`?** (common on Windows) Run these instead:
+> ```bash
+> python -m venv venv
+> source venv/bin/activate   # Windows: venv\Scripts\activate
+> pip install -r requirements.txt
+> streamlit run app.py
+> ```
 
 ---
 
@@ -71,21 +81,27 @@ Use the **sidebar on the left** to switch between views:
 
 You don't need to manually rename columns or reformat your bank's CSV export. Just upload it directly and the app will figure it out.
 
-The smart importer automatically recognises columns from most major banks — including **Chase**, **Monzo**, **NatWest**, **DCU**, and others — by looking for common column names like:
+The smart importer has been tested with exports from **Chase**, **Monzo**, **NatWest**, **Barclays**, **Bank of America**, **Wells Fargo**, **Revolut**, and **DCU**. It recognises all of these column names automatically:
 
 | What we need | Column names we recognise |
 |---|---|
-| **Date** | `Date`, `Transaction Date`, `Post Date`, `Posting Date` |
-| **Amount** | `Amount`, `Value`, `Local Amount`, `Cost` — or split `Debit` / `Credit` columns |
-| **Description** | `Description`, `Name`, `Payee`, `Memo`, `Transaction Description` |
+| **Date** | `Date`, `Transaction Date`, `Post Date`, `Posting Date`, `Completed Date`, `Settled Date` |
+| **Amount** | `Amount`, `Value`, `Local Amount`, `Cost` — or split `Debit`/`Credit` or `Money Out`/`Money In` columns |
+| **Description** | `Description`, `Name`, `Payee`, `Memo`, `Narrative`, `Transaction Description` |
 | **Category** | `Category` (if missing, defaults to "Other") |
 | **Type** | `Type`, `Transaction Type` (if missing, positive amounts = Income, negative = Expense) |
 
-> **How it works:** If your bank uses a single "Amount" column with negative numbers for purchases, the app treats negative = Expense and positive = Income. If your bank has separate "Debit" and "Credit" columns, those are used instead. Either way, you just upload and go.
+> **How it works:** If your bank uses a single "Amount" column with negative numbers for purchases, the app treats negative = Expense and positive = Income. If your bank has separate "Debit" / "Credit" columns (like NatWest) or "Money Out" / "Money In" (like Barclays), those are used instead. CSVs without a header row (like Wells Fargo) are also detected and handled automatically.
 
 ---
 
 ## Running Tests
+
+```bash
+make test
+```
+
+Or manually:
 
 ```bash
 python -m pytest tests/ -v
@@ -111,6 +127,7 @@ FINANCE_DB_PATH=/path/to/custom.db streamlit run app.py
 PersonalFinanceApp/
 ├── app.py              # Starts the app and builds the sidebar navigation
 ├── database.py         # All data storage and retrieval
+├── Makefile            # One-command setup, run, and test
 ├── requirements.txt    # Python package dependencies
 ├── .env                # Private settings (not shared)
 ├── .gitignore          # Files Git should ignore
