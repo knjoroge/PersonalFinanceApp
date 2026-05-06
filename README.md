@@ -73,7 +73,7 @@ Use the **sidebar on the left** to switch between views:
 | **Dashboard** | See your financial overview. Add data in other tabs first! |
 | **Transactions** | Add income and expenses. Use CSV Import/Export for bulk data. |
 | **Net Worth & Accounts** | Enter current balances for your accounts. Has backup/restore too. |
-| **AI Advisor** | Enter your Gemini API key, then ask the AI questions about your finances. |
+| **AI Advisor** | Chat with an AI that knows your finances. **Privacy note:** API keys are never saved to disk, and the AI only sees your aggregate totals, never your individual transactions. |
 
 ---
 

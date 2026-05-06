@@ -71,13 +71,22 @@ Once you've added some data, the Dashboard comes to life:
 
 Need advice? The AI Advisor has two tools:
 
-1. **Calculators** — Try the 50/30/20 budgeting rule or the Compound Interest Visualiser to see how your investments could grow.
-2. **AI Chat** — Enter your Google Gemini API Key (free from [Google AI Studio](https://aistudio.google.com/app/apikey)), and ask questions like:
-   - *"How can I cut down my food expenses?"*
-   - *"Am I saving enough based on my income?"*
-   - *"What should I do with my spare cash each month?"*
+1. **Calculators** — Try the 50/30/20 budgeting rule or the Compound Interest Visualizer to see how your investments could grow.
+2. **AI Chat** — A conversational assistant powered by Google Gemini.
 
-The AI sees your total income, expenses, and net worth so its answers are tailored to your situation.
+### How to use the AI Chat
+
+To use the chat, you need a **Google Gemini API Key** (you can get one for free from [Google AI Studio](https://aistudio.google.com/app/apikey)).
+
+**🔒 Privacy & Security Notes:**
+* **Your API Key is never saved to your computer.** It only lives in your browser session and disappears when you close the app. You'll need to enter it each time you want to chat.
+* **The AI does NOT see your individual transactions.** It only sees your high-level numbers: Total Income, Total Expenses, Net Balance, and Total Net Worth.
+* You can click the **"View Data sent to AI"** dropdown above the chat to see exactly what information is being shared.
+
+**Example questions to ask:**
+- *"My net worth is $X and I have $Y left over this month. What's the best way to use the extra cash?"*
+- *"Based on my total income and expenses, am I saving enough according to the 50/30/20 rule?"*
+- *"I want to build an emergency fund. Based on my current net balance, how long would it take to save $5000?"*
 
 ---
 
