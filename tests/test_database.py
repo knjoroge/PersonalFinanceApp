@@ -248,3 +248,117 @@ class TestDatabaseBackupRestore:
         """Restoring garbage data should fail gracefully."""
         success, msg = db.import_database(b"not a database")
         assert not success
+
+
+class TestBankCSVFormats:
+    """Test that the smart importer handles real-world bank CSV formats."""
+
+    def test_chase(self):
+        """Chase: Date, Description, Amount (negative = expense), Type, Balance."""
+        csv = (
+            "Date,Description,Amount,Type,Balance\n"
+            "01/15/2026,STARBUCKS STORE,-4.95,Sale,1234.56\n"
+            "01/14/2026,PAYROLL DEPOSIT,3500.00,Credit,1239.51\n"
+        )
+        imported, errors = db.import_transactions_csv(csv)
+        assert imported == 2
+        assert errors is None
+        df = db.get_all_transactions()
+        starbucks = df[df["description"] == "STARBUCKS STORE"].iloc[0]
+        assert starbucks["type"] == "Expense"
+        assert starbucks["amount"] == 4.95
+        payroll = df[df["description"] == "PAYROLL DEPOSIT"].iloc[0]
+        assert payroll["type"] == "Income"
+        assert payroll["amount"] == 3500.00
+
+    def test_monzo(self):
+        """Monzo: Date, Time, Type, Name, Category, Amount, Currency, etc."""
+        csv = (
+            "Date,Time,Type,Name,Emoji,Category,Amount,Currency,Notes and #tags\n"
+            "15/01/2026,10:30:00,Card payment,Tesco,,Groceries,-22.50,GBP,Weekly shop\n"
+            "14/01/2026,09:00:00,Faster payment,EMPLOYER,,Income,2800.00,GBP,Salary Jan\n"
+        )
+        imported, errors = db.import_transactions_csv(csv)
+        assert imported == 2
+        assert errors is None
+        df = db.get_all_transactions()
+        tesco = df[df["description"] == "Tesco"].iloc[0]
+        assert tesco["type"] == "Expense"
+        assert tesco["amount"] == 22.50
+        assert tesco["category"] == "Groceries"
+
+    def test_natwest(self):
+        """NatWest: Date, Narrative, Debit, Credit, Balance."""
+        csv = (
+            "Date,Narrative,Debit,Credit,Balance\n"
+            "15/01/2026,AMAZON PURCHASE,45.99,,1200.00\n"
+            "14/01/2026,SALARY,,3000.00,1245.99\n"
+        )
+        imported, errors = db.import_transactions_csv(csv)
+        assert imported == 2
+        assert errors is None
+        df = db.get_all_transactions()
+        amazon = df[df["description"] == "AMAZON PURCHASE"].iloc[0]
+        assert amazon["type"] == "Expense"
+        assert amazon["amount"] == 45.99
+        salary = df[df["description"] == "SALARY"].iloc[0]
+        assert salary["type"] == "Income"
+        assert salary["amount"] == 3000.00
+
+    def test_barclays(self):
+        """Barclays variant: Date, Description, Money Out, Money In, Balance."""
+        csv = (
+            "Date,Description,Money Out,Money In,Balance\n"
+            "15/01/2026,NETFLIX,15.99,,500.00\n"
+            "14/01/2026,BANK TRANSFER,,200.00,515.99\n"
+        )
+        imported, errors = db.import_transactions_csv(csv)
+        assert imported == 2
+        df = db.get_all_transactions()
+        netflix = df[df["description"] == "NETFLIX"].iloc[0]
+        assert netflix["type"] == "Expense"
+        assert netflix["amount"] == 15.99
+
+    def test_wells_fargo_no_header(self):
+        """Wells Fargo: no header row — columns are Date, Amount, *, *, Description."""
+        csv = (
+            "01/15/2026,-85.50,,1234,COSTCO WHOLESALE\n"
+            "01/14/2026,1500.00,,0,PAYCHECK DIRECT DEP\n"
+        )
+        imported, errors = db.import_transactions_csv(csv)
+        assert imported == 2
+        assert errors is None
+        df = db.get_all_transactions()
+        costco = df[df["description"] == "COSTCO WHOLESALE"].iloc[0]
+        assert costco["type"] == "Expense"
+        assert costco["amount"] == 85.50
+
+    def test_revolut(self):
+        """Revolut: Completed Date, Description, Amount, Currency, Category."""
+        csv = (
+            "Completed Date,Description,Amount,Currency,Category\n"
+            "2026-01-15,Uber Eats,-18.40,GBP,Restaurants\n"
+            "2026-01-14,Salary,4200.00,GBP,Income\n"
+        )
+        imported, errors = db.import_transactions_csv(csv)
+        assert imported == 2
+        assert errors is None
+        df = db.get_all_transactions()
+        uber = df[df["description"] == "Uber Eats"].iloc[0]
+        assert uber["type"] == "Expense"
+        assert uber["amount"] == 18.40
+        assert uber["category"] == "Restaurants"
+
+    def test_bank_of_america(self):
+        """Bank of America: Date, Description, Amount."""
+        csv = (
+            "Date,Description,Amount\n"
+            "01/20/2026,WHOLE FOODS MARKET,-67.23\n"
+            "01/19/2026,VENMO PAYMENT,150.00\n"
+        )
+        imported, errors = db.import_transactions_csv(csv)
+        assert imported == 2
+        df = db.get_all_transactions()
+        whole_foods = df[df["description"] == "WHOLE FOODS MARKET"].iloc[0]
+        assert whole_foods["type"] == "Expense"
+        assert whole_foods["amount"] == 67.23

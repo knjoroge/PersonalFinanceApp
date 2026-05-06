@@ -188,8 +188,9 @@ def export_transactions_csv() -> Optional[str]:
 
 def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Optional[str]]:
     """
-    Import transactions from a CSV string using smart column mapping heuristics.
-    Supports various bank formats (Chase, Monzo, NatWest, DCU) automatically.
+    Import transactions from a CSV string using smart column mapping.
+    Supports most major bank formats automatically, including Chase, Monzo,
+    NatWest, Barclays, Bank of America, Wells Fargo, Revolut, and DCU.
     Returns (count_imported, error_message).
     """
     try:
@@ -203,13 +204,46 @@ def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Option
     original_cols = df.columns
     df.columns = [str(c).strip().lower() for c in df.columns]
 
+    # Some banks (Wells Fargo, some BofA exports) ship CSVs with no header row.
+    # pandas treats the first data row as headers, so the "column names" will
+    # look like actual data (e.g. "01/15/2026" instead of "Date").
+    # Detect this: if no known date column is found but the first column name
+    # looks like a date, re-read the CSV without a header row.
+    date_aliases = ['date', 'transaction date', 'post date', 'posting date', 'completed date', 'settled date']
+    date_col = next((c for c in date_aliases if c in df.columns), None)
+
+    if not date_col:
+        first_col_name = str(df.columns[0])
+        try:
+            pd.to_datetime(first_col_name)
+            # First "column name" is a date — this CSV has no header row.
+            # Re-read with automatic column names and guess the layout.
+            df = pd.read_csv(io.StringIO(csv_content), header=None)
+            # Most headerless bank CSVs follow: Date, Amount, [Type], [Check#], Description
+            if len(df.columns) >= 3:
+                df.columns = (['date', 'amount'] +
+                              [f'col{i}' for i in range(2, len(df.columns))])
+                # The last text-like column is usually the description
+                for i in range(len(df.columns) - 1, 1, -1):
+                    col = df.columns[i]
+                    sample = df[col].dropna().head(5)
+                    if sample.apply(lambda v: isinstance(v, str) and not v.replace('.','').replace('-','').isdigit()).any():
+                        df = df.rename(columns={col: 'description'})
+                        break
+                date_col = 'date'
+            else:
+                return 0, f"CSV has no header row and too few columns ({len(df.columns)}) to guess the layout."
+        except (ValueError, TypeError):
+            pass  # First column doesn't look like a date — normal error path below
+
     # Try to find a column for each piece of data we need.
     # Banks use different names, so we check several common ones.
-    date_col = next((c for c in ['date', 'transaction date', 'post date', 'posting date'] if c in df.columns), None)
+    if not date_col:
+        date_col = next((c for c in date_aliases if c in df.columns), None)
     amount_col = next((c for c in ['amount', 'value', 'local amount', 'cost'] if c in df.columns), None)
     debit_col = next((c for c in ['debit', 'money out'] if c in df.columns), None)
     credit_col = next((c for c in ['credit', 'money in'] if c in df.columns), None)
-    desc_col = next((c for c in ['description', 'name', 'payee', 'memo', 'transaction description'] if c in df.columns), None)
+    desc_col = next((c for c in ['description', 'name', 'payee', 'memo', 'narrative', 'transaction description'] if c in df.columns), None)
     cat_col = next((c for c in ['category'] if c in df.columns), None)
     type_col = next((c for c in ['type', 'transaction type'] if c in df.columns), None)
 
@@ -229,7 +263,10 @@ def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Option
             if pd.isnull(raw_date):
                 continue
             try:
-                parsed_date = pd.to_datetime(raw_date).strftime("%Y-%m-%d")
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    parsed_date = pd.to_datetime(raw_date, dayfirst=True).strftime("%Y-%m-%d")
             except Exception:
                 parsed_date = str(raw_date).strip()
 
