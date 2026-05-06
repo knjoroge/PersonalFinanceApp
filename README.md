@@ -6,20 +6,18 @@ Track your spending, set budgets, monitor your net worth, and get AI-powered fin
 
 ---
 
-## Quick Start (30 seconds)
-
-If you have Python 3.8+ and `make` installed, this is the fastest way to get running:
+## Quick Start
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/PersonalFinanceApp.git
 cd PersonalFinanceApp
-make setup   # Creates a virtual environment and installs everything
-make run     # Opens the app in your browser
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run app.py
 ```
 
 That's it! The app will open at `http://localhost:8501`.
-
-> **Don't have `make`?** See [Manual Setup](#manual-setup) below.
 
 ---
 
@@ -56,43 +54,6 @@ That's it! The app will open at `http://localhost:8501`.
 
 ---
 
-## Manual Setup
-
-If you don't have `make`, follow these steps in your terminal:
-
-### 1. Download the project
-
-```bash
-git clone https://github.com/YOUR_USERNAME/PersonalFinanceApp.git
-cd PersonalFinanceApp
-```
-
-### 2. Create a virtual environment
-
-```bash
-python -m venv venv
-```
-
-Activate it:
-- **Mac / Linux:** `source venv/bin/activate`
-- **Windows:** `venv\Scripts\activate`
-
-You'll see `(venv)` at the start of your prompt when it's active.
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Start the app
-
-```bash
-streamlit run app.py
-```
-
----
-
 ## Getting Around
 
 Use the **sidebar on the left** to switch between views:
@@ -106,29 +67,25 @@ Use the **sidebar on the left** to switch between views:
 
 ---
 
-## Importing Transactions from CSV
+## Smart CSV Import
 
-Export transactions from your bank as a `.csv` file with these columns:
+You don't need to manually rename columns or reformat your bank's CSV export. Just upload it directly and the app will figure it out.
 
-| Column | Required? | Example |
-|---|---|---|
-| `date` | ✅ Yes | `2026-01-15` |
-| `amount` | ✅ Yes | `150.00` |
-| `category` | ✅ Yes | `Food` |
-| `type` | ✅ Yes | `Income` or `Expense` |
-| `description` | ❌ Optional | `Grocery shopping` |
+The smart importer automatically recognises columns from most major banks — including **Chase**, **Monzo**, **NatWest**, **DCU**, and others — by looking for common column names like:
 
-> **Tip:** Most banks let you export as CSV. You may need to rename columns to match the table above.
+| What we need | Column names we recognise |
+|---|---|
+| **Date** | `Date`, `Transaction Date`, `Post Date`, `Posting Date` |
+| **Amount** | `Amount`, `Value`, `Local Amount`, `Cost` — or split `Debit` / `Credit` columns |
+| **Description** | `Description`, `Name`, `Payee`, `Memo`, `Transaction Description` |
+| **Category** | `Category` (if missing, defaults to "Other") |
+| **Type** | `Type`, `Transaction Type` (if missing, positive amounts = Income, negative = Expense) |
+
+> **How it works:** If your bank uses a single "Amount" column with negative numbers for purchases, the app treats negative = Expense and positive = Income. If your bank has separate "Debit" and "Credit" columns, those are used instead. Either way, you just upload and go.
 
 ---
 
 ## Running Tests
-
-```bash
-make test
-```
-
-Or manually:
 
 ```bash
 python -m pytest tests/ -v
@@ -152,9 +109,8 @@ FINANCE_DB_PATH=/path/to/custom.db streamlit run app.py
 
 ```
 PersonalFinanceApp/
-├── app.py              # Main entry point — starts the app
+├── app.py              # Starts the app and builds the sidebar navigation
 ├── database.py         # All data storage and retrieval
-├── Makefile            # One-command setup and run
 ├── requirements.txt    # Python package dependencies
 ├── .env                # Private settings (not shared)
 ├── .gitignore          # Files Git should ignore

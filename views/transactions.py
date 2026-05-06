@@ -80,7 +80,7 @@ def render_transactions():
         with col_imp:
             st.markdown("#### Import Transactions")
             uploaded = st.file_uploader("Upload a CSV file", type=["csv"],
-                                        help="CSV must have columns: date, amount, category, type. Optional: description")
+                                        help="Upload your bank's CSV export. Most formats (Chase, Monzo, NatWest, DCU, etc.) are automatically supported!")
             if uploaded is not None and st.button("📥 Import", use_container_width=True):
                 content = uploaded.getvalue().decode("utf-8")
                 imported, errors = db.import_transactions_csv(content)

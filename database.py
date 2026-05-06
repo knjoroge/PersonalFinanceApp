@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional, Tuple, Union
 import os
 import io
+import re
 
 # Database file location. Override with FINANCE_DB_PATH env var if needed.
 DB_PATH = os.getenv("FINANCE_DB_PATH", "finance.db")
@@ -187,8 +188,9 @@ def export_transactions_csv() -> Optional[str]:
 
 def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Optional[str]]:
     """
-    Import transactions from a CSV string. Returns (count_imported, error_message).
-    The CSV needs columns: date, amount, category, type. Optional: description.
+    Import transactions from a CSV string using smart column mapping heuristics.
+    Supports various bank formats (Chase, Monzo, NatWest, DCU) automatically.
+    Returns (count_imported, error_message).
     """
     try:
         if isinstance(csv_content, bytes):
@@ -197,29 +199,102 @@ def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Option
     except Exception as e:
         return 0, f"Failed to parse CSV: {str(e)}"
 
-    required = {"date", "amount", "category", "type"}
-    if not required.issubset(set(df.columns)):
-        missing = required - set(df.columns)
-        return 0, f"Missing required columns: {', '.join(missing)}"
+    # Lowercase all column names so we can match them regardless of casing
+    original_cols = df.columns
+    df.columns = [str(c).strip().lower() for c in df.columns]
 
-    imported, errors = 0, []
+    # Try to find a column for each piece of data we need.
+    # Banks use different names, so we check several common ones.
+    date_col = next((c for c in ['date', 'transaction date', 'post date', 'posting date'] if c in df.columns), None)
+    amount_col = next((c for c in ['amount', 'value', 'local amount', 'cost'] if c in df.columns), None)
+    debit_col = next((c for c in ['debit', 'money out'] if c in df.columns), None)
+    credit_col = next((c for c in ['credit', 'money in'] if c in df.columns), None)
+    desc_col = next((c for c in ['description', 'name', 'payee', 'memo', 'transaction description'] if c in df.columns), None)
+    cat_col = next((c for c in ['category'] if c in df.columns), None)
+    type_col = next((c for c in ['type', 'transaction type'] if c in df.columns), None)
+
+    if not date_col:
+        return 0, f"Missing a date column. Found columns: {', '.join(original_cols)}"
+        
+    if not amount_col and not (debit_col and credit_col):
+        return 0, f"Missing an amount column (or debit/credit columns). Found columns: {', '.join(original_cols)}"
+
+    imported = 0
+    errors = []
+    
     for idx, row in df.iterrows():
         try:
-            amount = float(row["amount"])
+            # Parse Date
+            raw_date = row[date_col]
+            if pd.isnull(raw_date):
+                continue
+            try:
+                parsed_date = pd.to_datetime(raw_date).strftime("%Y-%m-%d")
+            except Exception:
+                parsed_date = str(raw_date).strip()
+
+            # Parse Amount & Type
+            amount = 0.0
+            t_type = "Expense"
+            
+            explicit_type = str(row[type_col]).strip().title() if type_col and pd.notnull(row[type_col]) else None
+            
+            if amount_col and pd.notnull(row[amount_col]):
+                raw_amt = str(row[amount_col]).replace(',', '')
+                raw_amt = re.sub(r'[^\d\.-]', '', raw_amt)  # strip currency symbols etc.
+                
+                if not raw_amt or raw_amt == '-':
+                    continue
+                amount_val = float(raw_amt)
+                
+                if explicit_type in ("Income", "Expense"):
+                    t_type = explicit_type
+                    amount = abs(amount_val)
+                else:
+                    if amount_val < 0:
+                        t_type = "Expense"
+                        amount = abs(amount_val)
+                    else:
+                        t_type = "Income"
+                        amount = amount_val
+                        
+            elif debit_col and credit_col:
+                debit_val = str(row[debit_col]).replace(',', '') if pd.notnull(row[debit_col]) else ""
+                credit_val = str(row[credit_col]).replace(',', '') if pd.notnull(row[credit_col]) else ""
+                debit_val = re.sub(r'[^\d\.-]', '', debit_val)
+                credit_val = re.sub(r'[^\d\.-]', '', credit_val)
+                
+                if debit_val and float(debit_val) > 0:
+                    amount = float(debit_val)
+                    t_type = "Expense"
+                elif credit_val and float(credit_val) > 0:
+                    amount = float(credit_val)
+                    t_type = "Income"
+                else:
+                    continue
+            else:
+                continue
+                
             if amount <= 0:
-                errors.append(f"Row {idx + 1}: Amount must be positive")
-                continue
-            t_type = str(row["type"]).strip()
-            if t_type not in ("Income", "Expense"):
-                errors.append(f"Row {idx + 1}: Type must be 'Income' or 'Expense'")
-                continue
-            desc = str(row.get("description", "")).strip() if pd.notnull(row.get("description")) else ""
-            add_transaction(str(row["date"]).strip(), amount, str(row["category"]).strip(), t_type, desc)
+                continue  # skip zero-amount rows (e.g. auth holds)
+
+            # Use the category from the CSV if available, otherwise default to "Other"
+            category = "Other"
+            if cat_col and pd.notnull(row[cat_col]) and str(row[cat_col]).strip():
+                category = str(row[cat_col]).strip()
+
+            desc = ""
+            if desc_col and pd.notnull(row[desc_col]):
+                desc = str(row[desc_col]).strip()
+
+            add_transaction(parsed_date, amount, category, t_type, desc)
             imported += 1
+            
         except Exception as e:
             errors.append(f"Row {idx + 1}: {str(e)}")
 
-    return imported, "; ".join(errors) if errors else None
+    error_msg = "; ".join(errors) if errors else None
+    return imported, error_msg
 
 
 # --- Database Backup & Restore ---
