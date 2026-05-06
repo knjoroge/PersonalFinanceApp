@@ -207,21 +207,24 @@ class TestCSVImportExport:
         """CSV with missing columns should fail with a clear message."""
         imported, errors = db.import_transactions_csv("name,value\nfoo,bar\n")
         assert imported == 0
-        assert "Missing required columns" in errors
+        assert "Missing a date column" in errors
 
     def test_import_invalid_type(self):
-        """CSV row with invalid type should be reported."""
+        """When the type column has an unrecognised value, amount sign decides Income vs Expense."""
         csv = "date,amount,category,type,description\n2026-01-01,100,Food,Debit,bad\n"
         imported, errors = db.import_transactions_csv(csv)
-        assert imported == 0
-        assert "Type must be" in errors
+        assert imported == 1
+        df = db.get_all_transactions()
+        assert df.iloc[0]["type"] == "Income"  # positive amount → Income
 
     def test_import_negative_amount(self):
-        """CSV row with negative amount should be reported."""
+        """CSV row with negative amount should be smartly converted to Expense."""
         csv = "date,amount,category,type,description\n2026-01-01,-100,Food,Expense,bad\n"
         imported, errors = db.import_transactions_csv(csv)
-        assert imported == 0
-        assert "Amount must be positive" in errors
+        assert imported == 1
+        df = db.get_all_transactions()
+        assert df.iloc[0]["amount"] == 100.0
+        assert df.iloc[0]["type"] == "Expense"
 
 
 class TestDatabaseBackupRestore:
