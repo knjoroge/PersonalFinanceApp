@@ -6,12 +6,17 @@ Welcome! This guide will walk you through setting up your finances in just a few
 
 ## 🏦 Step 1: Add Your Accounts
 
-Start by telling the app about your bank accounts, retirement funds, and investments.
+Start by telling the app about your bank accounts, retirement funds, investments, **and any debts** — all of these together make up your true net worth.
 
 1. Click **Net Worth & Accounts** in the sidebar.
-2. Type a name for each account (e.g. "Chase Checking", "Fidelity 401k").
-3. Pick the account type and enter its current balance.
-4. Click **Save Balance Update**.
+2. Type a name for each account (e.g. "Chase Checking", "Fidelity 401k", "Amex Card").
+3. Pick the account type:
+    - **Assets**: Checking, Savings, 401k, Pension, Shares/Brokerage, Real Estate, Other Assets.
+    - **Liabilities**: Credit Card, Mortgage, Loan, Other Liabilities.
+4. Enter the balance:
+    - For **assets**, enter a positive number (e.g. `4500`).
+    - For **liabilities**, enter a **negative** number representing what you owe (e.g. `-2500` for a credit-card balance). This way it correctly subtracts from your net worth.
+5. Click **Save Balance Update**.
 
 Repeat for each account you want to track. You only need to update these once a month or so.
 
@@ -53,7 +58,7 @@ As you log expenses, you'll see colour-coded progress bars on the dashboard:
 - 🟡 80–100% — getting close
 - 🔴 100%+ — over budget
 
-You can also set an overall **Monthly Expense Goal** to track total spending.
+You can also set an overall **Monthly Expense Goal** to track total spending. This goal always reflects your current calendar month (e.g. "May 2026"), regardless of which date filter is active on the Dashboard.
 
 ---
 
@@ -78,6 +83,8 @@ Need advice? The AI Advisor has two tools:
 
 To use the chat, you need a **Google Gemini API Key** (you can get one for free from [Google AI Studio](https://aistudio.google.com/app/apikey)).
 
+**Where to enter the key:** On the AI Advisor page, paste it into the **🔑 Gemini API Key** box in the **left sidebar**. Once set, the sidebar will show a "Key set for this session" confirmation, with a **Clear Key** button if you want to remove it.
+
 **🔒 Privacy & Security Notes:**
 * **Your API Key is never saved to your computer.** It only lives in your browser session and disappears when you close the app. You'll need to enter it each time you want to chat.
 * **The AI does NOT see your individual transactions.** It only sees your high-level numbers: Total Income, Total Expenses, Net Balance, and Total Net Worth.
@@ -99,6 +106,8 @@ Your data lives on your computer, not in the cloud. Keep a backup just in case!
 3. Click **⬇️ Download Database Backup**.
 
 If you ever need to restore, just upload the backup file in the same section.
+
+> ⚠️ **Heads up:** Restoring **overwrites your current database**. Any transactions, accounts, or budgets added since the backup was taken will be lost. Download a fresh backup of your current data first if you want to keep it.
 
 ---
 

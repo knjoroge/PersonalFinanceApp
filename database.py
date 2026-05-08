@@ -2,19 +2,32 @@
 database.py — All data storage and retrieval for the Personal Finance Manager.
 
 Uses SQLite to store everything in a single local file (finance.db).
-Handles transactions, accounts, budgets, CSV import/export, and backups.
+Handles transactions, accounts, budgets, preferences, CSV import/export, and backups.
 """
 
 import sqlite3
 import pandas as pd
 from datetime import datetime
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict
 import os
 import io
 import re
 
 # Database file location. Override with FINANCE_DB_PATH env var if needed.
 DB_PATH = os.getenv("FINANCE_DB_PATH", "finance.db")
+
+
+# --- Shared category and account-type lists ---
+# Imported by the views so renaming a category only requires editing one file.
+
+INCOME_CATEGORIES = ["Salary", "Bonus", "Investment", "Side Hustle", "Other"]
+EXPENSE_CATEGORIES = ["Housing", "Food", "Transportation", "Utilities", "Insurance",
+                      "Healthcare", "Savings", "Debt", "Entertainment", "Other"]
+
+ASSET_TYPES = ["Checking", "Savings", "401k", "Pension", "Shares/Brokerage",
+               "Real Estate", "Other Assets"]
+LIABILITY_TYPES = ["Credit Card", "Mortgage", "Loan", "Other Liabilities"]
+ACCOUNT_TYPES = ASSET_TYPES + LIABILITY_TYPES
 
 
 def _connect() -> sqlite3.Connection:
@@ -64,6 +77,12 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 category TEXT NOT NULL UNIQUE,
                 monthly_limit REAL NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS preferences (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
         ''')
         conn.commit()
@@ -166,7 +185,6 @@ def set_budget(category: str, monthly_limit: float) -> None:
 
 
 def get_all_budgets() -> pd.DataFrame:
-    """Fetch all budgets, sorted alphabetically."""
     with _connect() as conn:
         return pd.read_sql("SELECT * FROM budgets ORDER BY category", conn)
 
@@ -178,12 +196,168 @@ def delete_budget(budget_id: int) -> None:
         conn.commit()
 
 
+# --- Preferences (key/value store for small UI state like the monthly goal) ---
+
+def get_preference(key: str, default: Optional[str] = None) -> Optional[str]:
+    """Read a stored preference, or return the default if it isn't set."""
+    with _connect() as conn:
+        row = conn.execute("SELECT value FROM preferences WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else default
+
+
+def set_preference(key: str, value: str) -> None:
+    """Store a preference, overwriting any existing value for the same key."""
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO preferences (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = ?",
+            (key, str(value), str(value)),
+        )
+        conn.commit()
+
+
 # --- CSV Import / Export ---
 
 def export_transactions_csv() -> Optional[str]:
     """Export all transactions as a CSV string, or None if empty."""
     df = get_all_transactions()
     return df.to_csv(index=False) if not df.empty else None
+
+
+# Column-name aliases used by the smart CSV importer, in priority order.
+_DATE_ALIASES = ['date', 'transaction date', 'post date', 'posting date',
+                 'completed date', 'settled date']
+_AMOUNT_ALIASES = ['amount', 'value', 'local amount', 'cost']
+_DEBIT_ALIASES = ['debit', 'money out']
+_CREDIT_ALIASES = ['credit', 'money in']
+_DESC_ALIASES = ['description', 'name', 'payee', 'memo', 'narrative', 'transaction description']
+_CAT_ALIASES = ['category']
+_TYPE_ALIASES = ['type', 'transaction type']
+
+
+def _decode_csv(content: Union[str, bytes]) -> str:
+    """Normalise raw CSV input to a UTF-8 string."""
+    if isinstance(content, bytes):
+        return content.decode("utf-8")
+    return content
+
+
+def _read_csv_smart(text: str) -> Tuple[pd.DataFrame, Optional[str]]:
+    """
+    Parse a CSV string, handling banks that ship without a header row.
+
+    Some banks (Wells Fargo, some BofA exports) don't include a header. pandas
+    treats the first data row as headers, so the "column names" look like
+    actual data (e.g. "01/15/2026" instead of "Date"). Detect this: if no
+    known date column is found but the first column name parses as a date,
+    re-read the CSV without a header row and use a sensible default layout.
+
+    Returns (dataframe, date_col_hint). The hint is the date column name when
+    we already had to nominate one during smart-detection; None otherwise.
+    """
+    df = pd.read_csv(io.StringIO(text))
+    df.columns = [str(c).strip().lower() for c in df.columns]
+
+    if any(c in df.columns for c in _DATE_ALIASES):
+        return df, None
+
+    # No known date column — maybe the CSV is headerless.
+    first_col_name = str(df.columns[0])
+    try:
+        pd.to_datetime(first_col_name)
+    except (ValueError, TypeError):
+        return df, None  # First column isn't a date — let the caller report a missing-column error.
+
+    # First "column name" is a date → CSV was headerless. Re-read with auto-named columns.
+    df = pd.read_csv(io.StringIO(text), header=None)
+    if len(df.columns) < 3:
+        return df, None  # Caller will detect the missing-columns case.
+
+    # Most headerless bank CSVs follow: Date, Amount, [Type], [Check#], Description.
+    df.columns = ['date', 'amount'] + [f'col{i}' for i in range(2, len(df.columns))]
+    # The last text-like column is usually the description.
+    for i in range(len(df.columns) - 1, 1, -1):
+        col = df.columns[i]
+        sample = df[col].dropna().head(5)
+        looks_like_text = sample.apply(
+            lambda v: isinstance(v, str) and not v.replace('.', '').replace('-', '').isdigit()
+        ).any()
+        if looks_like_text:
+            df = df.rename(columns={col: 'description'})
+            break
+
+    return df, 'date'
+
+
+def _find_csv_columns(df: pd.DataFrame, date_col_hint: Optional[str]) -> Dict[str, Optional[str]]:
+    """Match the CSV's lowercased columns against our known aliases."""
+    def _first_match(aliases):
+        return next((c for c in aliases if c in df.columns), None)
+
+    return {
+        'date':   date_col_hint or _first_match(_DATE_ALIASES),
+        'amount': _first_match(_AMOUNT_ALIASES),
+        'debit':  _first_match(_DEBIT_ALIASES),
+        'credit': _first_match(_CREDIT_ALIASES),
+        'desc':   _first_match(_DESC_ALIASES),
+        'cat':    _first_match(_CAT_ALIASES),
+        'type':   _first_match(_TYPE_ALIASES),
+    }
+
+
+def _parse_csv_date(raw) -> str:
+    """Turn whatever the CSV gave us into a YYYY-MM-DD string."""
+    try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            return pd.to_datetime(raw, dayfirst=True).strftime("%Y-%m-%d")
+    except Exception:
+        return str(raw).strip()
+
+
+def _clean_money(s) -> str:
+    """Strip currency symbols/commas from a money-like string, leaving digits, dot, minus."""
+    if pd.isnull(s):
+        return ""
+    return re.sub(r'[^\d\.-]', '', str(s).replace(',', ''))
+
+
+def _parse_amount_and_type(row, cols: Dict[str, Optional[str]]) -> Optional[Tuple[float, str]]:
+    """
+    Extract (amount, type) for a row.
+
+    Prefers a single Amount column (with optional explicit Type). If that's
+    missing, falls back to separate Debit/Credit (or Money Out/Money In) columns.
+    Returns None when the row has no usable amount.
+    """
+    amount_col, debit_col, credit_col, type_col = cols['amount'], cols['debit'], cols['credit'], cols['type']
+
+    if amount_col and pd.notnull(row[amount_col]):
+        raw_amt = _clean_money(row[amount_col])
+        if not raw_amt or raw_amt == '-':
+            return None
+        amount_val = float(raw_amt)
+
+        explicit_type = (str(row[type_col]).strip().title()
+                         if type_col and pd.notnull(row[type_col]) else None)
+        if explicit_type in ("Income", "Expense"):
+            return abs(amount_val), explicit_type
+        # No explicit type (or unknown one) — sign decides.
+        if amount_val < 0:
+            return abs(amount_val), "Expense"
+        return amount_val, "Income"
+
+    if debit_col and credit_col:
+        debit_val = _clean_money(row[debit_col])
+        credit_val = _clean_money(row[credit_col])
+        if debit_val and float(debit_val) > 0:
+            return float(debit_val), "Expense"
+        if credit_val and float(credit_val) > 0:
+            return float(credit_val), "Income"
+        return None
+
+    return None
 
 
 def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Optional[str]]:
@@ -194,144 +368,48 @@ def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Option
     Returns (count_imported, error_message).
     """
     try:
-        if isinstance(csv_content, bytes):
-            csv_content = csv_content.decode("utf-8")
-        df = pd.read_csv(io.StringIO(csv_content))
+        text = _decode_csv(csv_content)
+        df, date_col_hint = _read_csv_smart(text)
     except Exception as e:
         return 0, f"Failed to parse CSV: {str(e)}"
 
-    # Lowercase all column names so we can match them regardless of casing
-    original_cols = df.columns
-    df.columns = [str(c).strip().lower() for c in df.columns]
+    cols = _find_csv_columns(df, date_col_hint)
 
-    # Some banks (Wells Fargo, some BofA exports) ship CSVs with no header row.
-    # pandas treats the first data row as headers, so the "column names" will
-    # look like actual data (e.g. "01/15/2026" instead of "Date").
-    # Detect this: if no known date column is found but the first column name
-    # looks like a date, re-read the CSV without a header row.
-    date_aliases = ['date', 'transaction date', 'post date', 'posting date', 'completed date', 'settled date']
-    date_col = next((c for c in date_aliases if c in df.columns), None)
-
-    if not date_col:
-        first_col_name = str(df.columns[0])
-        try:
-            pd.to_datetime(first_col_name)
-            # First "column name" is a date — this CSV has no header row.
-            # Re-read with automatic column names and guess the layout.
-            df = pd.read_csv(io.StringIO(csv_content), header=None)
-            # Most headerless bank CSVs follow: Date, Amount, [Type], [Check#], Description
-            if len(df.columns) >= 3:
-                df.columns = (['date', 'amount'] +
-                              [f'col{i}' for i in range(2, len(df.columns))])
-                # The last text-like column is usually the description
-                for i in range(len(df.columns) - 1, 1, -1):
-                    col = df.columns[i]
-                    sample = df[col].dropna().head(5)
-                    if sample.apply(lambda v: isinstance(v, str) and not v.replace('.','').replace('-','').isdigit()).any():
-                        df = df.rename(columns={col: 'description'})
-                        break
-                date_col = 'date'
-            else:
-                return 0, f"CSV has no header row and too few columns ({len(df.columns)}) to guess the layout."
-        except (ValueError, TypeError):
-            pass  # First column doesn't look like a date — normal error path below
-
-    # Try to find a column for each piece of data we need.
-    # Banks use different names, so we check several common ones.
-    if not date_col:
-        date_col = next((c for c in date_aliases if c in df.columns), None)
-    amount_col = next((c for c in ['amount', 'value', 'local amount', 'cost'] if c in df.columns), None)
-    debit_col = next((c for c in ['debit', 'money out'] if c in df.columns), None)
-    credit_col = next((c for c in ['credit', 'money in'] if c in df.columns), None)
-    desc_col = next((c for c in ['description', 'name', 'payee', 'memo', 'narrative', 'transaction description'] if c in df.columns), None)
-    cat_col = next((c for c in ['category'] if c in df.columns), None)
-    type_col = next((c for c in ['type', 'transaction type'] if c in df.columns), None)
-
-    if not date_col:
-        return 0, f"Missing a date column. Found columns: {', '.join(original_cols)}"
-        
-    if not amount_col and not (debit_col and credit_col):
-        return 0, f"Missing an amount column (or debit/credit columns). Found columns: {', '.join(original_cols)}"
+    if not cols['date']:
+        return 0, f"Missing a date column. Found columns: {', '.join(df.columns)}"
+    if not cols['amount'] and not (cols['debit'] and cols['credit']):
+        return 0, f"Missing an amount column (or debit/credit columns). Found columns: {', '.join(df.columns)}"
 
     imported = 0
     errors = []
-    
+
     for idx, row in df.iterrows():
         try:
-            # Parse Date
-            raw_date = row[date_col]
+            raw_date = row[cols['date']]
             if pd.isnull(raw_date):
                 continue
-            try:
-                import warnings
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", UserWarning)
-                    parsed_date = pd.to_datetime(raw_date, dayfirst=True).strftime("%Y-%m-%d")
-            except Exception:
-                parsed_date = str(raw_date).strip()
 
-            # Parse Amount & Type
-            amount = 0.0
-            t_type = "Expense"
-            
-            explicit_type = str(row[type_col]).strip().title() if type_col and pd.notnull(row[type_col]) else None
-            
-            if amount_col and pd.notnull(row[amount_col]):
-                raw_amt = str(row[amount_col]).replace(',', '')
-                raw_amt = re.sub(r'[^\d\.-]', '', raw_amt)  # strip currency symbols etc.
-                
-                if not raw_amt or raw_amt == '-':
-                    continue
-                amount_val = float(raw_amt)
-                
-                if explicit_type in ("Income", "Expense"):
-                    t_type = explicit_type
-                    amount = abs(amount_val)
-                else:
-                    if amount_val < 0:
-                        t_type = "Expense"
-                        amount = abs(amount_val)
-                    else:
-                        t_type = "Income"
-                        amount = amount_val
-                        
-            elif debit_col and credit_col:
-                debit_val = str(row[debit_col]).replace(',', '') if pd.notnull(row[debit_col]) else ""
-                credit_val = str(row[credit_col]).replace(',', '') if pd.notnull(row[credit_col]) else ""
-                debit_val = re.sub(r'[^\d\.-]', '', debit_val)
-                credit_val = re.sub(r'[^\d\.-]', '', credit_val)
-                
-                if debit_val and float(debit_val) > 0:
-                    amount = float(debit_val)
-                    t_type = "Expense"
-                elif credit_val and float(credit_val) > 0:
-                    amount = float(credit_val)
-                    t_type = "Income"
-                else:
-                    continue
-            else:
+            parsed = _parse_amount_and_type(row, cols)
+            if parsed is None:
                 continue
-                
+            amount, t_type = parsed
             if amount <= 0:
                 continue  # skip zero-amount rows (e.g. auth holds)
 
-            # Use the category from the CSV if available, otherwise default to "Other"
             category = "Other"
-            if cat_col and pd.notnull(row[cat_col]) and str(row[cat_col]).strip():
-                category = str(row[cat_col]).strip()
+            if cols['cat'] and pd.notnull(row[cols['cat']]) and str(row[cols['cat']]).strip():
+                category = str(row[cols['cat']]).strip()
 
             desc = ""
-            if desc_col and pd.notnull(row[desc_col]):
-                desc = str(row[desc_col]).strip()
+            if cols['desc'] and pd.notnull(row[cols['desc']]):
+                desc = str(row[cols['desc']]).strip()
 
-            add_transaction(parsed_date, amount, category, t_type, desc)
+            add_transaction(_parse_csv_date(raw_date), amount, category, t_type, desc)
             imported += 1
-            
         except Exception as e:
             errors.append(f"Row {idx + 1}: {str(e)}")
 
-    error_msg = "; ".join(errors) if errors else None
-    return imported, error_msg
+    return imported, ("; ".join(errors) if errors else None)
 
 
 # --- Database Backup & Restore ---

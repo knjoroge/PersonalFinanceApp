@@ -9,10 +9,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import database as db
-
-INCOME_CATEGORIES = ["Salary", "Bonus", "Investment", "Side Hustle", "Other"]
-EXPENSE_CATEGORIES = ["Housing", "Food", "Transportation", "Utilities", "Insurance",
-                       "Healthcare", "Savings", "Debt", "Entertainment", "Other"]
+from database import INCOME_CATEGORIES, EXPENSE_CATEGORIES
 
 
 @st.dialog("Delete Transaction?")
@@ -57,14 +54,9 @@ def edit_transaction_dialog(tid, cur_date, cur_amount, cur_category, cur_type, c
         st.rerun()
 
 
-def render_transactions():
-    """Render the full Transactions page."""
-
-    st.header("💸 Transactions")
-
-    # --- Add new transaction ---
+def _render_add_form() -> None:
+    """Add-new-transaction form. Type sits outside so changing it re-filters Category live."""
     with st.expander("➕ Add New Transaction", expanded=False):
-        # Type sits outside the form so changing it re-filters Category in real time.
         t_type = st.radio("Type", ["Income", "Expense"], horizontal=True, key="add_type")
         cats = INCOME_CATEGORIES if t_type == "Income" else EXPENSE_CATEGORIES
 
@@ -82,7 +74,9 @@ def render_transactions():
                 st.toast("Successfully added transaction!", icon="✅")
                 st.rerun()
 
-    # --- CSV import / export ---
+
+def _render_csv_section() -> None:
+    """Import / export controls."""
     with st.expander("📁 Import / Export CSV", expanded=False):
         col_imp, col_exp = st.columns(2)
 
@@ -98,62 +92,96 @@ def render_transactions():
 
         with col_imp:
             st.markdown("#### Import Transactions")
-            uploaded = st.file_uploader("Upload a CSV file", type=["csv"],
-                                        help="Upload your bank's CSV export. Most formats (Chase, Monzo, NatWest, DCU, etc.) are automatically supported!")
+            uploaded = st.file_uploader(
+                "Upload a CSV file", type=["csv"],
+                help="Upload your bank's CSV export. Most formats (Chase, Monzo, NatWest, DCU, etc.) are automatically supported!"
+            )
             if uploaded is not None and st.button("📥 Import", use_container_width=True):
                 content = uploaded.getvalue().decode("utf-8")
                 imported, errors = db.import_transactions_csv(content)
+
                 if imported > 0:
                     st.toast(f"Successfully imported {imported} transactions!", icon="✅")
+
                 if errors:
-                    st.warning(f"Some rows had issues: {errors}")
+                    error_lines = [e.strip() for e in errors.split(";") if e.strip()]
+                    st.warning(f"⚠️ {len(error_lines)} row(s) couldn't be imported.")
+                    with st.expander("Show details"):
+                        for line in error_lines:
+                            st.markdown(f"- {line}")
+
                 if imported > 0:
                     st.rerun()
 
+
+def _render_history(df: pd.DataFrame) -> None:
+    """Filterable, searchable, selectable transaction history."""
+    st.subheader("Transaction History")
+
+    f1, f2, f3 = st.columns([1, 1, 2])
+    with f1:
+        type_filter = st.selectbox("Type", ["All", "Income", "Expense"], key="trans_type_filter")
+    with f2:
+        category_filter = st.selectbox(
+            "Category", ["All"] + sorted(df["category"].unique().tolist()), key="trans_cat_filter"
+        )
+    with f3:
+        search = st.text_input("Search description", placeholder="e.g. dentist, amazon, uber", key="trans_search")
+
+    filtered = df.copy()
+    if type_filter != "All":
+        filtered = filtered[filtered["type"] == type_filter]
+    if category_filter != "All":
+        filtered = filtered[filtered["category"] == category_filter]
+    if search:
+        mask = filtered["description"].fillna("").str.contains(search, case=False, na=False)
+        filtered = filtered[mask]
+
+    if filtered.empty:
+        st.info("No transactions match your filters.")
+        return
+
+    st.caption(f"Showing **{len(filtered)}** transaction(s). Click a row to enable Edit / Delete.")
+
+    display = filtered[["id", "date", "type", "category", "amount", "description"]].copy()
+    display["amount"] = display["amount"].map(lambda v: f"${v:,.2f}")
+
+    selection = st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        column_config={"id": st.column_config.NumberColumn("ID", width="small")},
+        key="trans_table",
+    )
+
+    selected_rows = selection.selection.rows if selection and selection.selection else []
+    if not selected_rows:
+        return
+
+    selected_idx = selected_rows[0]
+    row = filtered.iloc[selected_idx]
+    a1, a2, _ = st.columns([1, 1, 4])
+    if a1.button("✏️ Edit selected", use_container_width=True):
+        edit_transaction_dialog(row["id"], row["date"], row["amount"],
+                                row["category"], row["type"], row["description"])
+    if a2.button("🗑️ Delete selected", use_container_width=True):
+        delete_transaction_dialog(row["id"], row["date"], row["category"], row["amount"], row["type"])
+
+
+def render_transactions():
+    """Render the full Transactions page."""
+    st.header("💸 Transactions")
+
+    _render_add_form()
+    _render_csv_section()
+
     st.markdown("---")
 
-    # --- Transaction history ---
-    st.subheader("Recent Activity")
     df = db.get_all_transactions()
-
-    if not df.empty:
-        f1, f2 = st.columns(2)
-        with f1:
-            type_filter = st.selectbox("Filter by Type", ["All", "Income", "Expense"], key="trans_type_filter")
-        with f2:
-            category_filter = st.selectbox("Filter by Category",
-                                           ["All"] + sorted(df["category"].unique().tolist()), key="trans_cat_filter")
-
-        filtered = df.copy()
-        if type_filter != "All":
-            filtered = filtered[filtered["type"] == type_filter]
-        if category_filter != "All":
-            filtered = filtered[filtered["category"] == category_filter]
-
-        # Pagination — 15 per page
-        per_page = 15
-        total = len(filtered)
-        pages = max(1, (total + per_page - 1) // per_page)
-        page = st.number_input(f"Page (1–{pages})", min_value=1, max_value=pages, value=1, key="trans_page")
-
-        start = (page - 1) * per_page
-        end = start + per_page
-        st.caption(f"Showing {start + 1}–{min(end, total)} of {total} transactions")
-
-        for _, row in filtered.iloc[start:end].iterrows():
-            cols = st.columns([1.5, 1, 1.5, 1, 2, 0.5, 0.5])
-            cols[0].write(row['date'])
-            cols[1].markdown(f"**{'🟢' if row['type'] == 'Income' else '🔴'}**")
-            cols[2].write(row['category'])
-            cols[3].write(f"${row['amount']:,.2f}")
-            cols[4].caption(row['description'] if pd.notnull(row['description']) else "")
-            if cols[5].button("✏️", key=f"edit_{row['id']}", help="Edit"):
-                edit_transaction_dialog(row['id'], row['date'], row['amount'],
-                                        row['category'], row['type'], row['description'])
-            if cols[6].button("🗑️", key=f"del_{row['id']}", help="Delete"):
-                delete_transaction_dialog(
-                    row['id'], row['date'], row['category'], row['amount'], row['type']
-                )
-            st.divider()
-    else:
+    if df.empty:
         st.info("No transactions logged yet. Add your first one above!")
+        return
+
+    _render_history(df)
