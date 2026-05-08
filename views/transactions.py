@@ -13,7 +13,23 @@ import database as db
 INCOME_CATEGORIES = ["Salary", "Bonus", "Investment", "Side Hustle", "Other"]
 EXPENSE_CATEGORIES = ["Housing", "Food", "Transportation", "Utilities", "Insurance",
                        "Healthcare", "Savings", "Debt", "Entertainment", "Other"]
-ALL_CATEGORIES = EXPENSE_CATEGORIES + [c for c in INCOME_CATEGORIES if c not in EXPENSE_CATEGORIES]
+
+
+@st.dialog("Delete Transaction?")
+def delete_transaction_dialog(tid, t_date, t_category, t_amount, t_type):
+    """Confirmation dialog before permanently deleting a transaction."""
+    st.warning(
+        f"Delete this **{t_type.lower()}** of **${t_amount:,.2f}** "
+        f"({t_category}) on **{t_date}**?"
+    )
+    st.caption("This cannot be undone.")
+    c1, c2 = st.columns(2)
+    if c1.button("Cancel", use_container_width=True, key=f"cancel_del_{tid}"):
+        st.rerun()
+    if c2.button("Delete", type="primary", use_container_width=True, key=f"confirm_del_{tid}"):
+        db.delete_transaction(tid)
+        st.toast("Transaction deleted.", icon="🗑️")
+        st.rerun()
 
 
 @st.dialog("Edit Transaction")
@@ -48,14 +64,17 @@ def render_transactions():
 
     # --- Add new transaction ---
     with st.expander("➕ Add New Transaction", expanded=False):
+        # Type sits outside the form so changing it re-filters Category in real time.
+        t_type = st.radio("Type", ["Income", "Expense"], horizontal=True, key="add_type")
+        cats = INCOME_CATEGORIES if t_type == "Income" else EXPENSE_CATEGORIES
+
         with st.form("add_transaction_form"):
             col1, col2 = st.columns(2)
             with col1:
                 t_date = st.date_input("Date", datetime.today())
-                t_type = st.selectbox("Type", ["Income", "Expense"])
                 t_amount = st.number_input("Amount ($)", min_value=0.01, format="%.2f")
             with col2:
-                t_category = st.selectbox("Category", ALL_CATEGORIES)
+                t_category = st.selectbox("Category", cats)
                 t_desc = st.text_input("Description (Optional)")
 
             if st.form_submit_button("Save Transaction", use_container_width=True):
@@ -132,9 +151,9 @@ def render_transactions():
                 edit_transaction_dialog(row['id'], row['date'], row['amount'],
                                         row['category'], row['type'], row['description'])
             if cols[6].button("🗑️", key=f"del_{row['id']}", help="Delete"):
-                db.delete_transaction(row['id'])
-                st.toast("Transaction deleted.", icon="🗑️")
-                st.rerun()
+                delete_transaction_dialog(
+                    row['id'], row['date'], row['category'], row['amount'], row['type']
+                )
             st.divider()
     else:
         st.info("No transactions logged yet. Add your first one above!")
