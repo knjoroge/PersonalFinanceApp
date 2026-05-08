@@ -7,12 +7,8 @@ Download or restore database backups from this page.
 
 import streamlit as st
 import database as db
+from database import ACCOUNT_TYPES
 import os
-
-ASSET_TYPES = ["Checking", "Savings", "401k", "Pension", "Shares/Brokerage",
-               "Real Estate", "Other Assets"]
-LIABILITY_TYPES = ["Credit Card", "Mortgage", "Loan", "Other Liabilities"]
-ACCOUNT_TYPES = ASSET_TYPES + LIABILITY_TYPES
 
 
 @st.dialog("Delete Account?")

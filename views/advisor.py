@@ -13,16 +13,37 @@ from google import genai
 from google.genai import types
 
 
+def _top_expense_categories(df_trans: pd.DataFrame, n: int = 3) -> list:
+    """Return the top n expense categories by total amount, as (name, total) tuples."""
+    if df_trans.empty:
+        return []
+    expenses = df_trans[df_trans['type'] == 'Expense']
+    if expenses.empty:
+        return []
+    grouped = expenses.groupby('category')['amount'].sum().sort_values(ascending=False)
+    return list(grouped.head(n).items())
+
+
 def _build_finance_context(total_income: float, total_expense: float,
-                           net_balance: float, net_worth: float) -> str:
+                           net_balance: float, net_worth: float,
+                           top_categories: list) -> str:
     """Build the context prompt that gives the AI your financial summary."""
+    savings_rate = (net_balance / total_income * 100) if total_income > 0 else 0.0
+    if top_categories:
+        top_lines = "\n    ".join(f"- {cat}: ${amt:,.2f}" for cat, amt in top_categories)
+        top_section = f"Top spending categories:\n    {top_lines}"
+    else:
+        top_section = "Top spending categories: (no expenses logged yet)"
+
     return f"""
     You are an expert, helpful personal finance assistant.
     Here is the user's current financial context:
     - Total Logged Income: ${total_income:,.2f}
     - Total Logged Expenses: ${total_expense:,.2f}
     - Net Balance (Income - Expense): ${net_balance:,.2f}
+    - Savings Rate: {savings_rate:.1f}%
     - Total Net Worth (Sum of Accounts): ${net_worth:,.2f}
+    {top_section}
 
     Please use this context to provide personalized, specific, and actionable advice.
     Keep your answers concise, encouraging, and formatted with markdown.
@@ -94,8 +115,8 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     st.write("See how your investments could grow over time.")
 
     c1, c2, c3, c4 = st.columns(4)
-    principal = c1.number_input("Starting Amount ($)", value=1000)
-    monthly_contrib = c2.number_input("Monthly Contribution ($)", value=200)
+    principal = c1.number_input("Starting Amount ($)", min_value=0, value=1000, step=100)
+    monthly_contrib = c2.number_input("Monthly Contribution ($)", min_value=0, value=200, step=50)
     years = c3.slider("Years to Grow", min_value=1, max_value=40, value=10)
     rate = c4.number_input("Annual Return (%)", min_value=0.0, max_value=30.0, value=7.0, step=0.5) / 100.0
 
@@ -187,7 +208,10 @@ def render_advisor():
     total_expense = df_trans[df_trans['type'] == 'Expense']['amount'].sum() if not df_trans.empty else 0
     net_balance = total_income - total_expense
 
-    finance_context = _build_finance_context(total_income, total_expense, net_balance, net_worth)
+    top_categories = _top_expense_categories(df_trans)
+    finance_context = _build_finance_context(
+        total_income, total_expense, net_balance, net_worth, top_categories
+    )
 
     st.markdown("---")
     tab1, tab2 = st.tabs(["📊 Calculators & Rules", "💬 Chat with AI"])

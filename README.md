@@ -37,7 +37,7 @@ You can also type `make` on its own to see all available commands.
 - **Track every dollar** — Log income and expenses with categories and browse your full history.
 - **Set spending budgets** — Choose a monthly limit for any category and watch colour-coded progress bars.
 - **Import from your bank** — Upload a CSV from your bank to bulk-add transactions, or download your data.
-- **Monitor your net worth** — Enter balances for bank accounts, retirement funds, and investments.
+- **Monitor your net worth** — Enter balances for assets (bank accounts, retirement funds, investments) *and* liabilities (credit cards, mortgages, loans) for a true net-worth picture.
 - **Back up your data** — Download your entire database to keep a safe copy, and restore it any time.
 - **Get AI advice** — Ask an AI assistant (powered by Google Gemini) questions about your finances.
 
@@ -51,9 +51,10 @@ You can also type `make` on its own to see all available commands.
 | 🎯 **Category Budgets** | Set spending limits per category with green/yellow/red progress bars. |
 | 💸 **Transactions** | Add, edit, delete, filter, and paginate through your transaction history. |
 | 📁 **CSV Import/Export** | Upload bank spreadsheets or download your data as CSV. |
-| 🏦 **Net Worth & Accounts** | Track balances across checking, savings, 401k, brokerage, etc. |
+| 🏦 **Net Worth & Accounts** | Track assets (checking, savings, 401k, brokerage, real estate) and liabilities (credit cards, mortgages, loans). |
 | 💾 **Backup & Restore** | Download/restore your database file for safekeeping. |
 | 🧠 **AI Advisor** | Chat with an AI that knows your data. Includes 50/30/20 and compound interest calculators. |
+| 🛟 **Safe Deletes** | Removing transactions, accounts, or budgets always asks for confirmation first. |
 
 ---
 
@@ -129,7 +130,8 @@ PersonalFinanceApp/
 ├── database.py         # All data storage and retrieval
 ├── Makefile            # One-command setup, run, and test
 ├── requirements.txt    # Python package dependencies
-├── .env                # Private settings (not shared)
+├── README.md           # This file
+├── USER_GUIDE.md       # Step-by-step walkthrough for first-time users
 ├── .gitignore          # Files Git should ignore
 ├── .streamlit/
 │   └── config.toml     # Visual theme settings

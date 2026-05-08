@@ -11,8 +11,10 @@ import plotly.express as px
 import database as db
 from datetime import datetime, timedelta
 
-EXPENSE_CATEGORIES = ["Housing", "Food", "Transportation", "Utilities", "Insurance",
-                      "Healthcare", "Savings", "Debt", "Entertainment", "Other"]
+from database import EXPENSE_CATEGORIES
+
+MONTHLY_GOAL_KEY = "monthly_expense_goal"
+DEFAULT_MONTHLY_GOAL = 2000.0
 
 
 @st.dialog("Remove Budget?")
@@ -54,6 +56,9 @@ def _render_filters(df_trans: pd.DataFrame) -> pd.DataFrame:
         date_range = st.sidebar.date_input("Select Date Range", [start_date, end_date])
         if len(date_range) == 2:
             start_date, end_date = date_range
+            if start_date > end_date:
+                st.sidebar.warning("Start date is after end date — swapping them.")
+                start_date, end_date = end_date, start_date
         else:
             st.sidebar.warning("Please select both a start and end date.")
 
@@ -102,13 +107,23 @@ def _render_budget_tracker(filtered_df: pd.DataFrame, budgets_df: pd.DataFrame) 
 
 
 def _render_monthly_goal(df_trans: pd.DataFrame) -> None:
-    """Monthly expense goal — always scoped to the current calendar month."""
+    """Monthly expense goal — always scoped to the current calendar month and persisted in DB."""
     today = pd.Timestamp.today()
     this_month = df_trans[df_trans['date'].dt.to_period('M') == today.to_period('M')]
     month_expense = this_month[this_month['type'] == 'Expense']['amount'].sum()
 
+    stored = db.get_preference(MONTHLY_GOAL_KEY)
+    saved_goal = float(stored) if stored else DEFAULT_MONTHLY_GOAL
+
     with st.expander(f"🎯 Monthly Expense Goal ({today.strftime('%B %Y')})", expanded=False):
-        goal_amount = st.number_input("Set your monthly expense goal ($):", min_value=1.0, value=2000.0, step=100.0)
+        goal_amount = st.number_input(
+            "Set your monthly expense goal ($):",
+            min_value=1.0, value=saved_goal, step=100.0,
+            key="monthly_goal_input",
+        )
+        if goal_amount != saved_goal:
+            db.set_preference(MONTHLY_GOAL_KEY, goal_amount)
+
         progress = min(month_expense / goal_amount, 1.0) if goal_amount > 0 else 0
         icon = "🟢" if progress < 0.8 else "🟡" if progress < 1.0 else "🔴"
         st.progress(progress)
@@ -184,11 +199,12 @@ def _render_recent_transactions(filtered_df: pd.DataFrame) -> None:
 
 def _render_empty_state(net_worth: float) -> None:
     """Placeholder shown when there are no transactions yet."""
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Total Income", "$0.00")
     m2.metric("Total Expenses", "$0.00")
-    m3.metric("Net Balance", "$0.00")
-    m4.metric("Total Net Worth", f"${net_worth:,.2f}")
+    m3.metric("Net Period Balance", "$0.00")
+    m4.metric("Savings Rate", "0.0%")
+    m5.metric("Total Net Worth", f"${net_worth:,.2f}")
     st.info("Add some transactions in the 'Transactions' tab to see your dashboard come to life!")
 
 
