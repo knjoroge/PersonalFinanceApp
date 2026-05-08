@@ -9,12 +9,37 @@ import streamlit as st
 import database as db
 import os
 
+ASSET_TYPES = ["Checking", "Savings", "401k", "Pension", "Shares/Brokerage",
+               "Real Estate", "Other Assets"]
+LIABILITY_TYPES = ["Credit Card", "Mortgage", "Loan", "Other Liabilities"]
+ACCOUNT_TYPES = ASSET_TYPES + LIABILITY_TYPES
+
+
+@st.dialog("Delete Account?")
+def delete_account_dialog(account_id, name, account_type, balance):
+    """Confirmation dialog before permanently deleting an account."""
+    st.warning(
+        f"Delete account **{name}** ({account_type}) with balance **${balance:,.2f}**?"
+    )
+    st.caption("This only removes the account record — your transactions are not affected. This cannot be undone.")
+    c1, c2 = st.columns(2)
+    if c1.button("Cancel", use_container_width=True, key=f"cancel_acct_{account_id}"):
+        st.rerun()
+    if c2.button("Delete", type="primary", use_container_width=True, key=f"confirm_acct_{account_id}"):
+        db.delete_account(account_id)
+        st.toast("Account deleted.", icon="🗑️")
+        st.rerun()
+
 
 def render_accounts():
     """Render the Net Worth & Accounts page."""
 
     st.header("🏦 Net Worth & Accounts")
-    st.markdown("Keep track of your total net worth. Updating an account simply overrides its previous balance.")
+    st.markdown(
+        "Track assets (savings, investments, property) and liabilities "
+        "(credit cards, mortgages, loans) to get a true net-worth picture. "
+        "Updating an account simply overrides its previous balance."
+    )
 
     # --- Add or update an account ---
     with st.form("manage_account_form"):
@@ -22,11 +47,12 @@ def render_accounts():
         col1, col2 = st.columns(2)
         with col1:
             a_name = st.text_input("Account Name (e.g. 'Fidelity 401k')")
-            a_type = st.selectbox("Account Type",
-                                  ["Checking", "Savings", "401k", "Pension", "Shares/Brokerage",
-                                   "Real Estate", "Other Assets"])
+            a_type = st.selectbox("Account Type", ACCOUNT_TYPES)
         with col2:
-            a_balance = st.number_input("Current Balance ($)", min_value=0.00, format="%.2f")
+            a_balance = st.number_input(
+                "Current Balance ($)", value=0.00, format="%.2f",
+                help="Enter a negative value for liabilities (e.g. -2500 for a credit-card balance owed)."
+            )
 
         st.info("If this is a new account, it will be added. If the name already exists, its balance will be updated.")
 
@@ -58,9 +84,9 @@ def render_accounts():
         with d2:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("Delete Selected", type="primary"):
-                db.delete_account(options[label])
-                st.toast("Account deleted.", icon="🗑️")
-                st.rerun()
+                sel_id = options[label]
+                sel = df[df['id'] == sel_id].iloc[0]
+                delete_account_dialog(int(sel_id), sel['name'], sel['type'], float(sel['balance']))
     else:
         st.info("You haven't added any accounts yet. Track your 401k, savings, and investments above!")
 
