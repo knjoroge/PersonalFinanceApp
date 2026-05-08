@@ -175,13 +175,8 @@ def _render_charts(filtered_df: pd.DataFrame) -> None:
         st.subheader("Income vs Expenses Over Time")
         trend_df = filtered_df.groupby([filtered_df['date'].dt.normalize(), 'type'])['amount'].sum().reset_index()
         if not trend_df.empty:
-            fig = px.scatter(trend_df, x='date', y='amount', color='type',
-                             color_discrete_map={"Income": "#10B981", "Expense": "#EF4444"},
-                             trendline="lowess", trendline_options=dict(frac=0.3))
-            fig.add_traces(
-                px.bar(trend_df, x='date', y='amount', color='type', barmode='group',
-                       color_discrete_map={"Income": "#10B981", "Expense": "#EF4444"}, opacity=0.5).data
-            )
+            fig = px.bar(trend_df, x='date', y='amount', color='type', barmode='group',
+                         color_discrete_map={"Income": "#10B981", "Expense": "#EF4444"})
             fig.update_layout(margin=dict(t=0, b=0, l=0, r=0))
             st.plotly_chart(fig, use_container_width=True)
         else:
