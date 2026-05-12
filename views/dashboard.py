@@ -12,27 +12,33 @@ import database as db
 from datetime import datetime, timedelta
 
 from database import EXPENSE_CATEGORIES
+from views._shared import confirm_delete_dialog
 
 MONTHLY_GOAL_KEY = "monthly_expense_goal"
 DEFAULT_MONTHLY_GOAL = 2000.0
 
 
-@st.dialog("Remove Budget?")
-def _delete_budget_dialog(budget_id, category, monthly_limit):
-    """Confirmation dialog before removing a category budget."""
-    st.warning(f"Remove the budget for **{category}** (${monthly_limit:,.0f}/month)?")
-    st.caption("This only removes the budget — your transactions in this category stay. This cannot be undone.")
-    c1, c2 = st.columns(2)
-    if c1.button("Cancel", use_container_width=True, key=f"cancel_bud_{budget_id}"):
-        st.rerun()
-    if c2.button("Remove", type="primary", use_container_width=True, key=f"confirm_bud_{budget_id}"):
-        db.delete_budget(budget_id)
-        st.toast("Budget removed.", icon="🗑️")
-        st.rerun()
+def _open_delete_budget_dialog(budget_id, category, monthly_limit):
+    """Open the "are you sure?" pop-up before removing a category budget."""
+    body = f"Remove the budget for **{category}** (${monthly_limit:,.0f}/month)?"
+    caption = ("This only removes the budget — your transactions in this category stay. "
+               "This cannot be undone.")
+    confirm_delete_dialog(
+        title="Remove Budget?",
+        body=body,
+        caption=caption,
+        confirm_label="Remove",
+        on_confirm=lambda: (db.delete_budget(budget_id), st.toast("Budget removed.", icon="🗑️")),
+        key_suffix=f"bud_{budget_id}",
+    )
 
 
 def _render_filters(df_trans: pd.DataFrame) -> pd.DataFrame:
-    """Render sidebar time-period controls and return the filtered dataframe."""
+    """Render the sidebar time-period controls and return only the rows that match.
+
+    Supports preset ranges (This Month, Last Month, Last 90 Days, All Time) and
+    a custom date picker.
+    """
     st.sidebar.markdown("### Dashboard Filters")
     filter_option = st.sidebar.selectbox(
         "Time Period",
@@ -40,7 +46,9 @@ def _render_filters(df_trans: pd.DataFrame) -> pd.DataFrame:
     )
 
     today = datetime.today()
-    start_date = df_trans['date'].min().date()
+    # Earliest date in the data, used as the default "All Time" start.
+    earliest = df_trans['date'].min()
+    start_date = earliest.date() if pd.notnull(earliest) else today.date()
     end_date = today.date()
 
     if filter_option == "This Month":
@@ -67,15 +75,21 @@ def _render_filters(df_trans: pd.DataFrame) -> pd.DataFrame:
 
 
 def _render_metrics(filtered_df: pd.DataFrame, net_worth: float) -> None:
-    """Render the row of headline metrics."""
-    total_income = filtered_df[filtered_df['type'] == 'Income']['amount'].sum()
-    total_expense = filtered_df[filtered_df['type'] == 'Expense']['amount'].sum()
-    net_balance = total_income - total_expense
-    savings_rate = ((total_income - total_expense) / total_income * 100) if total_income > 0 else 0
+    """Render the row of five headline numbers (income, expenses, net, savings, net worth).
+
+    Safe to call with an empty dataframe — all per-period numbers fall back to $0.
+    """
+    s = db.summarize(filtered_df)
+    total_income = s['income']
+    total_expense = s['expense']
+    net_balance = s['net']
+    savings_rate = s['savings_rate']
 
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Total Income", f"${total_income:,.2f}")
-    m2.metric("Total Expenses", f"${total_expense:,.2f}", delta=f"-${total_expense:,.2f}", delta_color="inverse")
+    m2.metric("Total Expenses", f"${total_expense:,.2f}",
+              delta=f"-${total_expense:,.2f}" if total_expense > 0 else None,
+              delta_color="inverse")
     m3.metric("Net Period Balance", f"${net_balance:,.2f}")
     m4.metric("Savings Rate", f"{savings_rate:.1f}%")
     m5.metric("Total Net Worth", f"${net_worth:,.2f}")
@@ -84,7 +98,7 @@ def _render_metrics(filtered_df: pd.DataFrame, net_worth: float) -> None:
 
 
 def _render_budget_tracker(filtered_df: pd.DataFrame, budgets_df: pd.DataFrame) -> None:
-    """Show colour-coded progress bars for each category budget."""
+    """Show colour-coded progress bars for each category budget (green/yellow/red)."""
     st.markdown("### 🎯 Category Budget Tracker")
 
     df_expenses = filtered_df[filtered_df['type'] == 'Expense']
@@ -107,7 +121,11 @@ def _render_budget_tracker(filtered_df: pd.DataFrame, budgets_df: pd.DataFrame) 
 
 
 def _render_monthly_goal(df_trans: pd.DataFrame) -> None:
-    """Monthly expense goal — always scoped to the current calendar month and persisted in DB."""
+    """Render the "Monthly Expense Goal" expander.
+
+    Always scoped to the current calendar month. The chosen goal amount is
+    saved to the preferences table so it persists between sessions.
+    """
     today = pd.Timestamp.today()
     this_month = df_trans[df_trans['date'].dt.to_period('M') == today.to_period('M')]
     month_expense = this_month[this_month['type'] == 'Expense']['amount'].sum()
@@ -131,7 +149,7 @@ def _render_monthly_goal(df_trans: pd.DataFrame) -> None:
 
 
 def _render_manage_budgets(budgets_df: pd.DataFrame) -> None:
-    """Form + table for setting and removing category budgets."""
+    """Render the expander for setting and removing category budgets."""
     with st.expander("📝 Manage Category Budgets", expanded=False):
         with st.form("budget_form"):
             b_col1, b_col2 = st.columns(2)
@@ -152,11 +170,11 @@ def _render_manage_budgets(budgets_df: pd.DataFrame) -> None:
             if st.button("Remove", key="del_budget_btn"):
                 sel_id = budget_options[del_budget]
                 sel = budgets_df[budgets_df['id'] == sel_id].iloc[0]
-                _delete_budget_dialog(int(sel_id), sel['category'], float(sel['monthly_limit']))
+                _open_delete_budget_dialog(int(sel_id), sel['category'], float(sel['monthly_limit']))
 
 
 def _render_charts(filtered_df: pd.DataFrame) -> None:
-    """Render the two side-by-side charts (pie + trend)."""
+    """Render the two side-by-side charts: expense pie + income-vs-expense over time."""
     col1, col2 = st.columns(2)
 
     with col1:
@@ -184,7 +202,7 @@ def _render_charts(filtered_df: pd.DataFrame) -> None:
 
 
 def _render_recent_transactions(filtered_df: pd.DataFrame) -> None:
-    """Small preview table of the most recent transactions in range."""
+    """Render the small preview table of the most recent transactions in range (up to 10)."""
     st.subheader("Recent Transactions (Filtered)")
     display = filtered_df.copy()
     display['date'] = display['date'].dt.strftime('%Y-%m-%d')
@@ -192,27 +210,18 @@ def _render_recent_transactions(filtered_df: pd.DataFrame) -> None:
                  use_container_width=True, hide_index=True)
 
 
-def _render_empty_state(net_worth: float) -> None:
-    """Placeholder shown when there are no transactions yet."""
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Total Income", "$0.00")
-    m2.metric("Total Expenses", "$0.00")
-    m3.metric("Net Period Balance", "$0.00")
-    m4.metric("Savings Rate", "0.0%")
-    m5.metric("Total Net Worth", f"${net_worth:,.2f}")
-    st.info("Add some transactions in the 'Transactions' tab to see your dashboard come to life!")
-
-
 def render_dashboard():
-    """Render the full financial dashboard page."""
+    """Top-level entry point for the Dashboard page."""
     st.title("📊 Financial Dashboard")
     st.markdown("---")
 
     df_trans = db.get_all_transactions()
     net_worth = db.get_net_worth()
 
+    # Empty state: same metric layout but with zeros, plus a helpful nudge.
     if df_trans.empty:
-        _render_empty_state(net_worth)
+        _render_metrics(df_trans, net_worth)
+        st.info("Add some transactions in the 'Transactions' tab to see your dashboard come to life!")
         return
 
     df_trans['date'] = pd.to_datetime(df_trans['date'])

@@ -42,6 +42,8 @@ Don't feel like entering transactions one by one? You don't have to!
 
 That's it — **no renaming columns, no reformatting**. The app automatically detects your bank's format and imports everything. Negative amounts become Expenses, positive amounts become Income, and any transactions your bank doesn't categorise will be labelled "Other" (you can always edit them later).
 
+> 💡 **Re-importing the same statement is safe.** Rows that exactly match an existing transaction (same date, amount, type, and description) are skipped automatically, so you can upload overlapping statements without creating duplicates. The import summary will tell you how many rows were new vs skipped.
+
 ---
 
 ## 🎯 Step 3: Set Your Budgets
@@ -107,7 +109,7 @@ Your data lives on your computer, not in the cloud. Keep a backup just in case!
 
 If you ever need to restore, just upload the backup file in the same section.
 
-> ⚠️ **Heads up:** Restoring **overwrites your current database**. Any transactions, accounts, or budgets added since the backup was taken will be lost. Download a fresh backup of your current data first if you want to keep it.
+> ✅ **Your current data is preserved automatically.** Before a restore replaces `finance.db`, the app saves your existing data as `finance.db.bak` in the same folder — so if you ever restore the wrong file, you can recover by manually renaming `finance.db.bak` back to `finance.db`. Note that only the most recent restore is preserved this way, so still download a fresh backup beforehand if you want a separate copy.
 
 ---
 

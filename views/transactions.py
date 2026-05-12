@@ -10,52 +10,63 @@ import pandas as pd
 from datetime import datetime
 import database as db
 from database import INCOME_CATEGORIES, EXPENSE_CATEGORIES
+from views._shared import confirm_delete_dialog
 
 
-@st.dialog("Delete Transaction?")
-def delete_transaction_dialog(tid, t_date, t_category, t_amount, t_type):
-    """Confirmation dialog before permanently deleting a transaction."""
-    st.warning(
-        f"Delete this **{t_type.lower()}** of **${t_amount:,.2f}** "
-        f"({t_category}) on **{t_date}**?"
+def _open_delete_transaction_dialog(tid, t_date, t_category, t_amount, t_type):
+    """Open the "are you sure?" pop-up before permanently deleting a transaction."""
+    body = (f"Delete this **{t_type.lower()}** of **${t_amount:,.2f}** "
+            f"({t_category}) on **{t_date}**?")
+    confirm_delete_dialog(
+        title="Delete Transaction?",
+        body=body,
+        on_confirm=lambda: (db.delete_transaction(tid), st.toast("Transaction deleted.", icon="🗑️")),
+        key_suffix=f"trans_{tid}",
     )
-    st.caption("This cannot be undone.")
-    c1, c2 = st.columns(2)
-    if c1.button("Cancel", use_container_width=True, key=f"cancel_del_{tid}"):
-        st.rerun()
-    if c2.button("Delete", type="primary", use_container_width=True, key=f"confirm_del_{tid}"):
-        db.delete_transaction(tid)
-        st.toast("Transaction deleted.", icon="🗑️")
-        st.rerun()
 
 
 @st.dialog("Edit Transaction")
 def edit_transaction_dialog(tid, cur_date, cur_amount, cur_category, cur_type, cur_desc):
-    """Pop-up form for editing an existing transaction."""
+    """Pop-up form for editing an existing transaction.
+
+    The Type selector sits outside the form so changing it instantly
+    refreshes the matching Category list (Income vs Expense categories).
+    """
     st.write(f"Editing Transaction #{tid}")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        new_date = st.date_input("Date", datetime.strptime(cur_date, "%Y-%m-%d"), key=f"edit_date_{tid}")
-        new_type = st.selectbox("Type", ["Income", "Expense"],
-                                index=0 if cur_type == "Income" else 1, key=f"edit_type_{tid}")
-        new_amount = st.number_input("Amount ($)", min_value=0.01, value=float(cur_amount),
-                                     format="%.2f", key=f"edit_amt_{tid}")
+    # Type lives outside the form so the category list reacts to it live.
+    new_type = st.radio(
+        "Type", ["Income", "Expense"],
+        horizontal=True,
+        index=0 if cur_type == "Income" else 1,
+        key=f"edit_type_{tid}",
+    )
+    cats = INCOME_CATEGORIES if new_type == "Income" else EXPENSE_CATEGORIES
+    cat_idx = cats.index(cur_category) if cur_category in cats else 0
 
-    with col2:
-        cats = INCOME_CATEGORIES if new_type == "Income" else EXPENSE_CATEGORIES
-        cat_idx = cats.index(cur_category) if cur_category in cats else 0
-        new_category = st.selectbox("Category", cats, index=cat_idx, key=f"edit_cat_{tid}")
-        new_desc = st.text_input("Description (Optional)", value=cur_desc or "", key=f"edit_desc_{tid}")
+    with st.form(f"edit_form_{tid}"):
+        col1, col2 = st.columns(2)
+        with col1:
+            new_date = st.date_input("Date", datetime.strptime(cur_date, "%Y-%m-%d"), key=f"edit_date_{tid}")
+            new_amount = st.number_input("Amount ($)", min_value=0.01, value=float(cur_amount),
+                                         format="%.2f", key=f"edit_amt_{tid}")
+        with col2:
+            new_category = st.selectbox("Category", cats, index=cat_idx, key=f"edit_cat_{tid}")
+            new_desc = st.text_input("Description (Optional)", value=cur_desc or "", key=f"edit_desc_{tid}")
 
-    if st.button("Save Changes"):
-        db.update_transaction(tid, new_date.strftime("%Y-%m-%d"), new_amount, new_category, new_type, new_desc)
-        st.toast("Transaction updated!", icon="✏️")
-        st.rerun()
+        if st.form_submit_button("Save Changes"):
+            db.update_transaction(tid, new_date.strftime("%Y-%m-%d"), new_amount,
+                                  new_category, new_type, new_desc)
+            st.toast("Transaction updated!", icon="✏️")
+            st.rerun()
 
 
 def _render_add_form() -> None:
-    """Add-new-transaction form. Type sits outside so changing it re-filters Category live."""
+    """Render the "Add New Transaction" form.
+
+    The Type radio is outside the form so the Category list re-filters live
+    when the user flips between Income and Expense.
+    """
     with st.expander("➕ Add New Transaction", expanded=False):
         t_type = st.radio("Type", ["Income", "Expense"], horizontal=True, key="add_type")
         cats = INCOME_CATEGORIES if t_type == "Income" else EXPENSE_CATEGORIES
@@ -76,7 +87,7 @@ def _render_add_form() -> None:
 
 
 def _render_csv_section() -> None:
-    """Import / export controls."""
+    """Render the CSV Import / Export controls (side-by-side download and upload)."""
     with st.expander("📁 Import / Export CSV", expanded=False):
         col_imp, col_exp = st.columns(2)
 
@@ -94,14 +105,16 @@ def _render_csv_section() -> None:
             st.markdown("#### Import Transactions")
             uploaded = st.file_uploader(
                 "Upload a CSV file", type=["csv"],
-                help="Upload your bank's CSV export. Most formats (Chase, Monzo, NatWest, DCU, etc.) are automatically supported!"
+                help="Upload your bank's CSV export. Most formats (Chase, Monzo, NatWest, DCU, etc.) are automatically supported! Duplicates are skipped automatically."
             )
             if uploaded is not None and st.button("📥 Import", use_container_width=True):
                 content = uploaded.getvalue().decode("utf-8")
-                imported, errors = db.import_transactions_csv(content)
+                imported, skipped, errors = db.import_transactions_csv(content)
 
                 if imported > 0:
                     st.toast(f"Successfully imported {imported} transactions!", icon="✅")
+                if skipped > 0:
+                    st.info(f"Skipped {skipped} duplicate row(s) that already exist in your data.")
 
                 if errors:
                     error_lines = [e.strip() for e in errors.split(";") if e.strip()]
@@ -110,12 +123,15 @@ def _render_csv_section() -> None:
                         for line in error_lines:
                             st.markdown(f"- {line}")
 
+                if imported == 0 and skipped == 0 and not errors:
+                    st.info("No new transactions were found in this file.")
+
                 if imported > 0:
                     st.rerun()
 
 
 def _render_history(df: pd.DataFrame) -> None:
-    """Filterable, searchable, selectable transaction history."""
+    """Render the filterable transaction history table with edit/delete actions."""
     st.subheader("Transaction History")
 
     f1, f2, f3 = st.columns([1, 1, 2])
@@ -167,11 +183,11 @@ def _render_history(df: pd.DataFrame) -> None:
         edit_transaction_dialog(row["id"], row["date"], row["amount"],
                                 row["category"], row["type"], row["description"])
     if a2.button("🗑️ Delete selected", use_container_width=True):
-        delete_transaction_dialog(row["id"], row["date"], row["category"], row["amount"], row["type"])
+        _open_delete_transaction_dialog(row["id"], row["date"], row["category"], row["amount"], row["type"])
 
 
 def render_transactions():
-    """Render the full Transactions page."""
+    """Top-level entry point for the Transactions page."""
     st.header("💸 Transactions")
 
     _render_add_form()
