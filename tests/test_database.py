@@ -199,20 +199,36 @@ class TestCSVImportExport:
             db.delete_transaction(row["id"])
         assert len(db.get_all_transactions()) == 0
 
-        imported, errors = db.import_transactions_csv(csv)
+        imported, skipped, errors = db.import_transactions_csv(csv)
         assert imported == 2
+        assert skipped == 0
         assert errors is None
+
+    def test_import_skips_duplicates(self):
+        """Re-importing the same CSV should skip rows that already exist."""
+        csv = (
+            "date,amount,category,type,description\n"
+            "2026-01-01,100,Food,Expense,Lunch\n"
+            "2026-01-02,50,Food,Expense,Coffee\n"
+        )
+        imported, skipped, _ = db.import_transactions_csv(csv)
+        assert imported == 2 and skipped == 0
+
+        imported, skipped, _ = db.import_transactions_csv(csv)
+        assert imported == 0 and skipped == 2
+        assert len(db.get_all_transactions()) == 2
 
     def test_import_missing_columns(self):
         """CSV with missing columns should fail with a clear message."""
-        imported, errors = db.import_transactions_csv("name,value\nfoo,bar\n")
+        imported, skipped, errors = db.import_transactions_csv("name,value\nfoo,bar\n")
         assert imported == 0
+        assert skipped == 0
         assert "Missing a date column" in errors
 
     def test_import_invalid_type(self):
         """When the type column has an unrecognised value, amount sign decides Income vs Expense."""
         csv = "date,amount,category,type,description\n2026-01-01,100,Food,Debit,bad\n"
-        imported, errors = db.import_transactions_csv(csv)
+        imported, skipped, errors = db.import_transactions_csv(csv)
         assert imported == 1
         df = db.get_all_transactions()
         assert df.iloc[0]["type"] == "Income"  # positive amount → Income
@@ -220,7 +236,7 @@ class TestCSVImportExport:
     def test_import_negative_amount(self):
         """CSV row with negative amount should be smartly converted to Expense."""
         csv = "date,amount,category,type,description\n2026-01-01,-100,Food,Expense,bad\n"
-        imported, errors = db.import_transactions_csv(csv)
+        imported, skipped, errors = db.import_transactions_csv(csv)
         assert imported == 1
         df = db.get_all_transactions()
         assert df.iloc[0]["amount"] == 100.0
@@ -260,7 +276,7 @@ class TestBankCSVFormats:
             "01/15/2026,STARBUCKS STORE,-4.95,Sale,1234.56\n"
             "01/14/2026,PAYROLL DEPOSIT,3500.00,Credit,1239.51\n"
         )
-        imported, errors = db.import_transactions_csv(csv)
+        imported, _, errors = db.import_transactions_csv(csv)
         assert imported == 2
         assert errors is None
         df = db.get_all_transactions()
@@ -278,7 +294,7 @@ class TestBankCSVFormats:
             "15/01/2026,10:30:00,Card payment,Tesco,,Groceries,-22.50,GBP,Weekly shop\n"
             "14/01/2026,09:00:00,Faster payment,EMPLOYER,,Income,2800.00,GBP,Salary Jan\n"
         )
-        imported, errors = db.import_transactions_csv(csv)
+        imported, _, errors = db.import_transactions_csv(csv)
         assert imported == 2
         assert errors is None
         df = db.get_all_transactions()
@@ -294,7 +310,7 @@ class TestBankCSVFormats:
             "15/01/2026,AMAZON PURCHASE,45.99,,1200.00\n"
             "14/01/2026,SALARY,,3000.00,1245.99\n"
         )
-        imported, errors = db.import_transactions_csv(csv)
+        imported, _, errors = db.import_transactions_csv(csv)
         assert imported == 2
         assert errors is None
         df = db.get_all_transactions()
@@ -312,7 +328,7 @@ class TestBankCSVFormats:
             "15/01/2026,NETFLIX,15.99,,500.00\n"
             "14/01/2026,BANK TRANSFER,,200.00,515.99\n"
         )
-        imported, errors = db.import_transactions_csv(csv)
+        imported, _, errors = db.import_transactions_csv(csv)
         assert imported == 2
         df = db.get_all_transactions()
         netflix = df[df["description"] == "NETFLIX"].iloc[0]
@@ -325,7 +341,7 @@ class TestBankCSVFormats:
             "01/15/2026,-85.50,,1234,COSTCO WHOLESALE\n"
             "01/14/2026,1500.00,,0,PAYCHECK DIRECT DEP\n"
         )
-        imported, errors = db.import_transactions_csv(csv)
+        imported, _, errors = db.import_transactions_csv(csv)
         assert imported == 2
         assert errors is None
         df = db.get_all_transactions()
@@ -340,7 +356,7 @@ class TestBankCSVFormats:
             "2026-01-15,Uber Eats,-18.40,GBP,Restaurants\n"
             "2026-01-14,Salary,4200.00,GBP,Income\n"
         )
-        imported, errors = db.import_transactions_csv(csv)
+        imported, _, errors = db.import_transactions_csv(csv)
         assert imported == 2
         assert errors is None
         df = db.get_all_transactions()
@@ -356,7 +372,7 @@ class TestBankCSVFormats:
             "01/20/2026,WHOLE FOODS MARKET,-67.23\n"
             "01/19/2026,VENMO PAYMENT,150.00\n"
         )
-        imported, errors = db.import_transactions_csv(csv)
+        imported, _, errors = db.import_transactions_csv(csv)
         assert imported == 2
         df = db.get_all_transactions()
         whole_foods = df[df["description"] == "WHOLE FOODS MARKET"].iloc[0]

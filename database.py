@@ -6,6 +6,7 @@ Handles transactions, accounts, budgets, preferences, CSV import/export, and bac
 """
 
 import sqlite3
+import shutil
 import pandas as pd
 from datetime import datetime
 from typing import Optional, Tuple, Union, Dict
@@ -31,12 +32,22 @@ ACCOUNT_TYPES = ASSET_TYPES + LIABILITY_TYPES
 
 
 def _connect() -> sqlite3.Connection:
-    """Shortcut to open a connection to the database."""
+    """Open a connection to the SQLite database file."""
     return sqlite3.connect(DB_PATH)
 
 
+def _exec(sql: str, params: tuple = ()) -> None:
+    """Run a single write query (INSERT/UPDATE/DELETE) and commit it.
+
+    Saves us from repeating the open-connection / commit dance in every function.
+    """
+    with _connect() as conn:
+        conn.execute(sql, params)
+        conn.commit()
+
+
 def _validate_transaction(date: str, amount: float, category: str, t_type: str) -> None:
-    """Shared validation for adding and updating transactions."""
+    """Check that a transaction's fields are sensible before saving."""
     try:
         datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
@@ -50,7 +61,7 @@ def _validate_transaction(date: str, amount: float, category: str, t_type: str) 
 
 
 def init_db() -> None:
-    """Create the database tables if they don't already exist."""
+    """Create the database tables on first run. Safe to call repeatedly."""
     with _connect() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -91,55 +102,69 @@ def init_db() -> None:
 # --- Transactions ---
 
 def add_transaction(date: str, amount: float, category: str, t_type: str, description: str) -> None:
-    """Save a new income or expense entry."""
+    """Save a new income or expense entry to the database."""
     _validate_transaction(date, amount, category, t_type)
-    with _connect() as conn:
-        conn.execute(
-            "INSERT INTO transactions (date, amount, category, type, description) VALUES (?, ?, ?, ?, ?)",
-            (date, amount, category.strip(), t_type, description),
-        )
-        conn.commit()
+    _exec(
+        "INSERT INTO transactions (date, amount, category, type, description) VALUES (?, ?, ?, ?, ?)",
+        (date, amount, category.strip(), t_type, description),
+    )
 
 
 def get_all_transactions() -> pd.DataFrame:
-    """Fetch every transaction, newest first."""
+    """Fetch every transaction in the database, newest first."""
     with _connect() as conn:
         return pd.read_sql("SELECT * FROM transactions ORDER BY date DESC", conn)
 
 
 def delete_transaction(transaction_id: int) -> None:
-    """Remove a transaction by its ID."""
-    with _connect() as conn:
-        conn.execute("DELETE FROM transactions WHERE id = ?", (int(transaction_id),))
-        conn.commit()
+    """Remove a single transaction by its database ID."""
+    _exec("DELETE FROM transactions WHERE id = ?", (int(transaction_id),))
 
 
 def update_transaction(transaction_id: int, date: str, amount: float,
                        category: str, t_type: str, description: str) -> None:
-    """Edit an existing transaction with new values."""
+    """Replace the values of an existing transaction."""
     _validate_transaction(date, amount, category, t_type)
-    with _connect() as conn:
-        conn.execute(
-            "UPDATE transactions SET date=?, amount=?, category=?, type=?, description=? WHERE id=?",
-            (date, amount, category, t_type, description, int(transaction_id)),
-        )
-        conn.commit()
+    _exec(
+        "UPDATE transactions SET date=?, amount=?, category=?, type=?, description=? WHERE id=?",
+        (date, amount, category, t_type, description, int(transaction_id)),
+    )
+
+
+def summarize(df: pd.DataFrame) -> Dict[str, float]:
+    """Compute headline totals (income / expense / net / savings rate) from a transactions dataframe.
+
+    Returned dict keys: 'income', 'expense', 'net', 'savings_rate'.
+    Safe to call with an empty dataframe — all values default to 0.
+    """
+    if df.empty:
+        return {'income': 0.0, 'expense': 0.0, 'net': 0.0, 'savings_rate': 0.0}
+    income = float(df[df['type'] == 'Income']['amount'].sum())
+    expense = float(df[df['type'] == 'Expense']['amount'].sum())
+    net = income - expense
+    savings_rate = (net / income * 100) if income > 0 else 0.0
+    return {'income': income, 'expense': expense, 'net': net, 'savings_rate': savings_rate}
 
 
 # --- Accounts ---
 
 def add_or_update_account(name: str, account_type: str, balance: float) -> None:
-    """Add a new account, or update the balance if it already exists."""
+    """Add a new account, or update the balance if an account with the same name already exists.
+
+    Name matching is case-insensitive ("Chase" and "chase" are treated as the same account).
+    """
     if not name or not name.strip():
         raise ValueError("Account name cannot be empty.")
+    name = name.strip()
+    last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with _connect() as conn:
         cursor = conn.cursor()
-        last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("SELECT id FROM accounts WHERE name = ?", (name,))
-        if cursor.fetchone():
+        cursor.execute("SELECT id, name FROM accounts WHERE LOWER(name) = LOWER(?)", (name,))
+        existing = cursor.fetchone()
+        if existing:
             cursor.execute(
-                "UPDATE accounts SET balance=?, last_updated=?, type=? WHERE name=?",
-                (balance, last_updated, account_type, name),
+                "UPDATE accounts SET balance=?, last_updated=?, type=? WHERE id=?",
+                (balance, last_updated, account_type, existing[0]),
             )
         else:
             cursor.execute(
@@ -150,20 +175,18 @@ def add_or_update_account(name: str, account_type: str, balance: float) -> None:
 
 
 def get_all_accounts() -> pd.DataFrame:
-    """Fetch all accounts, sorted by type then name."""
+    """Fetch all tracked accounts, sorted by type then name."""
     with _connect() as conn:
         return pd.read_sql("SELECT * FROM accounts ORDER BY type, name", conn)
 
 
 def delete_account(account_id: int) -> None:
-    """Remove an account by its ID."""
-    with _connect() as conn:
-        conn.execute("DELETE FROM accounts WHERE id = ?", (int(account_id),))
-        conn.commit()
+    """Remove a single account record by its database ID."""
+    _exec("DELETE FROM accounts WHERE id = ?", (int(account_id),))
 
 
 def get_net_worth() -> float:
-    """Sum of all account balances, or 0.0 if none exist."""
+    """Return the sum of all account balances (0.0 if no accounts exist)."""
     with _connect() as conn:
         result = conn.execute("SELECT SUM(balance) FROM accounts").fetchone()[0]
     return result if result else 0.0
@@ -175,25 +198,22 @@ def set_budget(category: str, monthly_limit: float) -> None:
     """Set or update a monthly spending limit for a category."""
     if monthly_limit <= 0:
         raise ValueError("Budget limit must be positive.")
-    with _connect() as conn:
-        conn.execute(
-            "INSERT INTO budgets (category, monthly_limit) VALUES (?, ?) "
-            "ON CONFLICT(category) DO UPDATE SET monthly_limit = ?",
-            (category, monthly_limit, monthly_limit),
-        )
-        conn.commit()
+    _exec(
+        "INSERT INTO budgets (category, monthly_limit) VALUES (?, ?) "
+        "ON CONFLICT(category) DO UPDATE SET monthly_limit = ?",
+        (category, monthly_limit, monthly_limit),
+    )
 
 
 def get_all_budgets() -> pd.DataFrame:
+    """Fetch every saved category budget, in alphabetical order."""
     with _connect() as conn:
         return pd.read_sql("SELECT * FROM budgets ORDER BY category", conn)
 
 
 def delete_budget(budget_id: int) -> None:
-    """Remove a budget by its ID."""
-    with _connect() as conn:
-        conn.execute("DELETE FROM budgets WHERE id = ?", (int(budget_id),))
-        conn.commit()
+    """Remove a category budget by its database ID."""
+    _exec("DELETE FROM budgets WHERE id = ?", (int(budget_id),))
 
 
 # --- Preferences (key/value store for small UI state like the monthly goal) ---
@@ -206,20 +226,18 @@ def get_preference(key: str, default: Optional[str] = None) -> Optional[str]:
 
 
 def set_preference(key: str, value: str) -> None:
-    """Store a preference, overwriting any existing value for the same key."""
-    with _connect() as conn:
-        conn.execute(
-            "INSERT INTO preferences (key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = ?",
-            (key, str(value), str(value)),
-        )
-        conn.commit()
+    """Store a preference value, overwriting any existing value for the same key."""
+    _exec(
+        "INSERT INTO preferences (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = ?",
+        (key, str(value), str(value)),
+    )
 
 
 # --- CSV Import / Export ---
 
 def export_transactions_csv() -> Optional[str]:
-    """Export all transactions as a CSV string, or None if empty."""
+    """Export all transactions as a CSV string. Returns None if there are no transactions."""
     df = get_all_transactions()
     return df.to_csv(index=False) if not df.empty else None
 
@@ -236,7 +254,7 @@ _TYPE_ALIASES = ['type', 'transaction type']
 
 
 def _decode_csv(content: Union[str, bytes]) -> str:
-    """Normalise raw CSV input to a UTF-8 string."""
+    """Convert raw CSV input (bytes or string) into a UTF-8 string."""
     if isinstance(content, bytes):
         return content.decode("utf-8")
     return content
@@ -290,7 +308,7 @@ def _read_csv_smart(text: str) -> Tuple[pd.DataFrame, Optional[str]]:
 
 
 def _find_csv_columns(df: pd.DataFrame, date_col_hint: Optional[str]) -> Dict[str, Optional[str]]:
-    """Match the CSV's lowercased columns against our known aliases."""
+    """Match the CSV's lowercased column names against the known field aliases."""
     def _first_match(aliases):
         return next((c for c in aliases if c in df.columns), None)
 
@@ -317,7 +335,7 @@ def _parse_csv_date(raw) -> str:
 
 
 def _clean_money(s) -> str:
-    """Strip currency symbols/commas from a money-like string, leaving digits, dot, minus."""
+    """Strip currency symbols and commas from a money-like string, leaving digits, dot, minus."""
     if pd.isnull(s):
         return ""
     return re.sub(r'[^\d\.-]', '', str(s).replace(',', ''))
@@ -325,7 +343,7 @@ def _clean_money(s) -> str:
 
 def _parse_amount_and_type(row, cols: Dict[str, Optional[str]]) -> Optional[Tuple[float, str]]:
     """
-    Extract (amount, type) for a row.
+    Extract (amount, type) for a CSV row.
 
     Prefers a single Amount column (with optional explicit Type). If that's
     missing, falls back to separate Debit/Credit (or Money Out/Money In) columns.
@@ -360,27 +378,50 @@ def _parse_amount_and_type(row, cols: Dict[str, Optional[str]]) -> Optional[Tupl
     return None
 
 
-def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Optional[str]]:
+def _existing_transaction_keys() -> set:
+    """Return a set of (date, amount, type, description) tuples for all stored transactions.
+
+    Used by CSV import to skip rows that look like exact duplicates of existing entries.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT date, amount, type, COALESCE(description, '') FROM transactions"
+        ).fetchall()
+    return {(d, float(a), t, (desc or "").strip()) for d, a, t, desc in rows}
+
+
+def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, int, Optional[str]]:
     """
     Import transactions from a CSV string using smart column mapping.
+
     Supports most major bank formats automatically, including Chase, Monzo,
     NatWest, Barclays, Bank of America, Wells Fargo, Revolut, and DCU.
-    Returns (count_imported, error_message).
+
+    Skips rows that exactly match an existing transaction (same date, amount,
+    type, and description) to make re-importing the same statement safe.
+
+    All valid rows are inserted in a single transaction for speed — a 500-row
+    file commits once instead of 500 times.
+
+    Returns (count_imported, count_skipped_duplicates, error_message).
     """
     try:
         text = _decode_csv(csv_content)
         df, date_col_hint = _read_csv_smart(text)
     except Exception as e:
-        return 0, f"Failed to parse CSV: {str(e)}"
+        return 0, 0, f"Failed to parse CSV: {str(e)}"
 
     cols = _find_csv_columns(df, date_col_hint)
 
     if not cols['date']:
-        return 0, f"Missing a date column. Found columns: {', '.join(df.columns)}"
+        return 0, 0, f"Missing a date column. Found columns: {', '.join(df.columns)}"
     if not cols['amount'] and not (cols['debit'] and cols['credit']):
-        return 0, f"Missing an amount column (or debit/credit columns). Found columns: {', '.join(df.columns)}"
+        return 0, 0, f"Missing an amount column (or debit/credit columns). Found columns: {', '.join(df.columns)}"
 
-    imported = 0
+    existing = _existing_transaction_keys()
+    seen_in_batch: set = set()
+    rows_to_insert = []
+    skipped = 0
     errors = []
 
     for idx, row in df.iterrows():
@@ -404,12 +445,28 @@ def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, Option
             if cols['desc'] and pd.notnull(row[cols['desc']]):
                 desc = str(row[cols['desc']]).strip()
 
-            add_transaction(_parse_csv_date(raw_date), amount, category, t_type, desc)
-            imported += 1
+            date_str = _parse_csv_date(raw_date)
+            _validate_transaction(date_str, amount, category, t_type)
+
+            key = (date_str, float(amount), t_type, desc.strip())
+            if key in existing or key in seen_in_batch:
+                skipped += 1
+                continue
+            seen_in_batch.add(key)
+
+            rows_to_insert.append((date_str, amount, category.strip(), t_type, desc))
         except Exception as e:
             errors.append(f"Row {idx + 1}: {str(e)}")
 
-    return imported, ("; ".join(errors) if errors else None)
+    if rows_to_insert:
+        with _connect() as conn:
+            conn.executemany(
+                "INSERT INTO transactions (date, amount, category, type, description) VALUES (?, ?, ?, ?, ?)",
+                rows_to_insert,
+            )
+            conn.commit()
+
+    return len(rows_to_insert), skipped, ("; ".join(errors) if errors else None)
 
 
 # --- Database Backup & Restore ---
@@ -423,9 +480,13 @@ def export_database() -> bytes:
 def import_database(db_bytes: bytes) -> Tuple[bool, str]:
     """
     Replace the current database with an uploaded backup.
-    Validates the file is a real SQLite DB with the right tables first.
+
+    Validates that the uploaded file is a real SQLite DB with the right tables
+    before swapping it in. The previous database is preserved at finance.db.bak
+    so a bad restore can still be rolled back manually.
     """
     temp_path = DB_PATH + ".tmp"
+    backup_path = DB_PATH + ".bak"
     try:
         with open(temp_path, "wb") as f:
             f.write(db_bytes)
@@ -436,8 +497,12 @@ def import_database(db_bytes: bytes) -> Tuple[bool, str]:
                 os.remove(temp_path)
                 return False, "Invalid database: missing required tables (transactions, accounts)."
 
+        # Keep a safety copy of the old DB before overwriting.
+        if os.path.exists(DB_PATH):
+            shutil.copy2(DB_PATH, backup_path)
+
         os.replace(temp_path, DB_PATH)
-        return True, "Database restored successfully!"
+        return True, "Database restored successfully! Previous data saved as finance.db.bak."
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)

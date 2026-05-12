@@ -7,6 +7,7 @@ Two tools in one:
 """
 
 import streamlit as st
+import numpy as np
 import pandas as pd
 import database as db
 from google import genai
@@ -25,10 +26,9 @@ def _top_expense_categories(df_trans: pd.DataFrame, n: int = 3) -> list:
 
 
 def _build_finance_context(total_income: float, total_expense: float,
-                           net_balance: float, net_worth: float,
-                           top_categories: list) -> str:
-    """Build the context prompt that gives the AI your financial summary."""
-    savings_rate = (net_balance / total_income * 100) if total_income > 0 else 0.0
+                           net_balance: float, savings_rate: float,
+                           net_worth: float, top_categories: list) -> str:
+    """Build the context prompt that gives the AI a snapshot of the user's finances."""
     if top_categories:
         top_lines = "\n    ".join(f"- {cat}: ${amt:,.2f}" for cat, amt in top_categories)
         top_section = f"Top spending categories:\n    {top_lines}"
@@ -51,7 +51,11 @@ def _build_finance_context(total_income: float, total_expense: float,
 
 
 def _render_api_key_sidebar() -> str:
-    """Show Gemini API key input in the sidebar; return the active key (or '')."""
+    """Render the Gemini API key entry in the sidebar.
+
+    The key lives only in this browser session — it's never written to disk
+    or the database. Returns the active key (empty string if not set).
+    """
     if "gemini_api_key" not in st.session_state:
         st.session_state.gemini_api_key = ""
 
@@ -75,7 +79,7 @@ def _render_api_key_sidebar() -> str:
 
 
 def _avg_monthly_income(df_trans: pd.DataFrame) -> float:
-    """Average monthly income across the months the user has data for."""
+    """Return the average monthly income across all months that have any income data."""
     if df_trans.empty:
         return 0.0
     income_df = df_trans[df_trans['type'] == 'Income']
@@ -85,8 +89,32 @@ def _avg_monthly_income(df_trans: pd.DataFrame) -> float:
     return income_df['amount'].sum() / months_active if months_active else 0.0
 
 
+def _compound_growth(principal: float, monthly_contrib: float,
+                     annual_rate: float, years: int) -> pd.DataFrame:
+    """Build a year-by-year compound-interest projection.
+
+    Uses the standard future-value formulas (vectorised with NumPy) so it
+    stays fast even for long horizons:
+      FV = P * (1 + r/12)^n  +  C * ((1 + r/12)^n - 1) / (r/12)
+    where n is the month number, P is principal, C is monthly contribution,
+    r is the annual return rate.
+    """
+    monthly_rate = annual_rate / 12
+    months = np.arange(12, years * 12 + 1, 12)  # one sample per year-end
+
+    growth_factor = (1 + monthly_rate) ** months
+    fv_principal = principal * growth_factor
+    if monthly_rate > 0:
+        fv_contrib = monthly_contrib * (growth_factor - 1) / monthly_rate
+    else:
+        fv_contrib = monthly_contrib * months  # zero-rate edge case
+
+    fv = np.round(fv_principal + fv_contrib, 2)
+    return pd.DataFrame({"Year": np.arange(1, years + 1), "Future Value": fv})
+
+
 def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
-    """50/30/20 rule + compound interest visualiser."""
+    """Render the 50/30/20 rule breakdown and compound interest visualiser."""
     st.subheader("The 50/30/20 Rule")
     st.write("A popular rule of thumb for budgeting your income:")
 
@@ -120,27 +148,21 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     years = c3.slider("Years to Grow", min_value=1, max_value=40, value=10)
     rate = c4.number_input("Annual Return (%)", min_value=0.0, max_value=30.0, value=7.0, step=0.5) / 100.0
 
-    amounts, current = [], principal
-    for year in range(1, years + 1):
-        for _ in range(12):
-            current += monthly_contrib
-            current *= (1 + rate / 12)
-        amounts.append({"Year": year, "Future Value": round(current, 2)})
-
-    df_growth = pd.DataFrame(amounts)
+    df_growth = _compound_growth(principal, monthly_contrib, rate, years)
     st.line_chart(df_growth.set_index("Year"))
 
+    final_value = float(df_growth["Future Value"].iloc[-1])
     total_contributed = principal + (monthly_contrib * 12 * years)
-    total_interest = amounts[-1]['Future Value'] - total_contributed
+    total_interest = final_value - total_contributed
 
     m1, m2, m3 = st.columns(3)
-    m1.metric(f"Projected Value ({years}yr)", f"${amounts[-1]['Future Value']:,.2f}")
+    m1.metric(f"Projected Value ({years}yr)", f"${final_value:,.2f}")
     m2.metric("Total Contributed", f"${total_contributed:,.2f}")
     m3.metric("Interest Earned", f"${total_interest:,.2f}")
 
 
 def _render_chat_tab(api_key: str, finance_context: str) -> None:
-    """Conversational Gemini chat anchored to the user's financial context."""
+    """Render the Gemini chat panel anchored to the user's financial context."""
     st.subheader("Personalized Q&A")
     st.write("Ask questions and get advice based on your current tracking data.")
 
@@ -195,7 +217,7 @@ def _render_chat_tab(api_key: str, finance_context: str) -> None:
 
 
 def render_advisor():
-    """Render the AI Financial Advisor page."""
+    """Top-level entry point for the AI Financial Advisor page."""
     st.header("🧠 AI Financial Advisor")
 
     api_key = _render_api_key_sidebar()
@@ -204,13 +226,12 @@ def render_advisor():
     if not df_trans.empty:
         df_trans['date'] = pd.to_datetime(df_trans['date'])
     net_worth = db.get_net_worth()
-    total_income = df_trans[df_trans['type'] == 'Income']['amount'].sum() if not df_trans.empty else 0
-    total_expense = df_trans[df_trans['type'] == 'Expense']['amount'].sum() if not df_trans.empty else 0
-    net_balance = total_income - total_expense
 
+    summary = db.summarize(df_trans)
     top_categories = _top_expense_categories(df_trans)
     finance_context = _build_finance_context(
-        total_income, total_expense, net_balance, net_worth, top_categories
+        summary['income'], summary['expense'], summary['net'],
+        summary['savings_rate'], net_worth, top_categories
     )
 
     st.markdown("---")

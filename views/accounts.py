@@ -8,27 +8,26 @@ Download or restore database backups from this page.
 import streamlit as st
 import database as db
 from database import ACCOUNT_TYPES
+from views._shared import confirm_delete_dialog
 import os
 
 
-@st.dialog("Delete Account?")
-def delete_account_dialog(account_id, name, account_type, balance):
-    """Confirmation dialog before permanently deleting an account."""
-    st.warning(
-        f"Delete account **{name}** ({account_type}) with balance **${balance:,.2f}**?"
+def _open_delete_account_dialog(account_id, name, account_type, balance):
+    """Open the "are you sure?" pop-up before permanently deleting an account."""
+    body = f"Delete account **{name}** ({account_type}) with balance **${balance:,.2f}**?"
+    caption = ("This only removes the account record — your transactions are not affected. "
+               "This cannot be undone.")
+    confirm_delete_dialog(
+        title="Delete Account?",
+        body=body,
+        caption=caption,
+        on_confirm=lambda: (db.delete_account(account_id), st.toast("Account deleted.", icon="🗑️")),
+        key_suffix=f"acct_{account_id}",
     )
-    st.caption("This only removes the account record — your transactions are not affected. This cannot be undone.")
-    c1, c2 = st.columns(2)
-    if c1.button("Cancel", use_container_width=True, key=f"cancel_acct_{account_id}"):
-        st.rerun()
-    if c2.button("Delete", type="primary", use_container_width=True, key=f"confirm_acct_{account_id}"):
-        db.delete_account(account_id)
-        st.toast("Account deleted.", icon="🗑️")
-        st.rerun()
 
 
 def render_accounts():
-    """Render the Net Worth & Accounts page."""
+    """Top-level entry point for the Net Worth & Accounts page."""
 
     st.header("🏦 Net Worth & Accounts")
     st.markdown(
@@ -50,7 +49,7 @@ def render_accounts():
                 help="Enter a negative value for liabilities (e.g. -2500 for a credit-card balance owed)."
             )
 
-        st.info("If this is a new account, it will be added. If the name already exists, its balance will be updated.")
+        st.info("If this is a new account, it will be added. If the name already exists (case-insensitive), its balance will be updated.")
 
         if st.form_submit_button("Save Balance Update", use_container_width=True):
             if not a_name.strip():
@@ -62,7 +61,7 @@ def render_accounts():
 
     st.markdown("---")
 
-    # --- View accounts ---
+    # --- View accounts and pick one to delete ---
     st.subheader("Current Asset Breakdown")
     net_worth = db.get_net_worth()
     st.metric("Total Tracked Net Worth", f"${net_worth:,.2f}")
@@ -71,7 +70,6 @@ def render_accounts():
     if not df.empty:
         st.dataframe(df[['name', 'type', 'balance', 'last_updated']], use_container_width=True, hide_index=True)
 
-        # Delete an account
         st.markdown("### Delete Account")
         d1, d2 = st.columns([3, 1])
         with d1:
@@ -82,7 +80,7 @@ def render_accounts():
             if st.button("Delete Selected", type="primary"):
                 sel_id = options[label]
                 sel = df[df['id'] == sel_id].iloc[0]
-                delete_account_dialog(int(sel_id), sel['name'], sel['type'], float(sel['balance']))
+                _open_delete_account_dialog(int(sel_id), sel['name'], sel['type'], float(sel['balance']))
     else:
         st.info("You haven't added any accounts yet. Track your 401k, savings, and investments above!")
 
@@ -104,7 +102,8 @@ def render_accounts():
 
     with restore_col:
         st.markdown("#### Restore from Backup")
-        st.caption("Upload a previously downloaded backup to restore your data.")
+        st.caption("Upload a previously downloaded backup to restore your data. "
+                   "Your current data is saved as finance.db.bak before being replaced.")
         uploaded_db = st.file_uploader("Upload .db file", type=["db"],
                                        help="Upload a finance.db backup file to restore your data.")
         if uploaded_db is not None and st.button("🔄 Restore Database", type="primary", use_container_width=True):
