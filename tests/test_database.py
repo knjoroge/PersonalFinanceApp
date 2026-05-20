@@ -378,3 +378,162 @@ class TestBankCSVFormats:
         whole_foods = df[df["description"] == "WHOLE FOODS MARKET"].iloc[0]
         assert whole_foods["type"] == "Expense"
         assert whole_foods["amount"] == 67.23
+
+
+class TestCurrency:
+    """Tests for the display-currency preference helpers."""
+
+    def test_default(self):
+        """No preference set → defaults to $."""
+        assert db.get_currency() == "$"
+
+    def test_persists(self):
+        """Setting a currency saves it across reads."""
+        db.set_currency("£")
+        assert db.get_currency() == "£"
+        db.set_currency("€")
+        assert db.get_currency() == "€"
+
+    def test_rejects_unsupported(self):
+        """Unknown currency symbols raise ValueError."""
+        with pytest.raises(ValueError, match="Unsupported currency"):
+            db.set_currency("¥")
+
+    def test_format_money_uses_current(self):
+        """format_money picks up the active currency symbol."""
+        db.set_currency("$")
+        assert db.format_money(1234.5) == "$1,234.50"
+        db.set_currency("£")
+        assert db.format_money(1234.5) == "£1,234.50"
+
+    def test_format_money_decimals(self):
+        """The decimals argument controls how many digits after the dot."""
+        db.set_currency("$")
+        assert db.format_money(1234, decimals=0) == "$1,234"
+
+    def test_format_money_euro_locale(self):
+        """Euro uses continental EU separators: dot for thousands, comma for decimals."""
+        db.set_currency("€")
+        assert db.format_money(1234.5) == "€1.234,50"
+        assert db.format_money(9.99) == "€9,99"
+
+
+class TestCSVMappingPresets:
+    """Tests for the save / list / get / delete CSV mapping preset helpers."""
+
+    def test_save_and_get(self):
+        """A saved preset can be read back identically."""
+        mapping = {"date": "trans date", "amount": "withdrawal", "desc": "memo"}
+        db.save_csv_mapping_preset("MyBank", mapping, dayfirst=False)
+        retrieved = db.get_csv_mapping_preset("MyBank")
+        assert retrieved is not None
+        assert retrieved["mapping"] == mapping
+        assert retrieved["dayfirst"] is False
+
+    def test_list(self):
+        """Saving two presets makes both visible to list_csv_mapping_presets."""
+        db.save_csv_mapping_preset("BankA", {"date": "d"})
+        db.save_csv_mapping_preset("BankB", {"date": "d"})
+        names = db.list_csv_mapping_presets()
+        assert "banka" in names and "bankb" in names
+
+    def test_get_unknown_returns_none(self):
+        """Asking for a non-existent preset returns None, not an error."""
+        assert db.get_csv_mapping_preset("does-not-exist") is None
+
+    def test_delete(self):
+        """A deleted preset disappears from list and get."""
+        db.save_csv_mapping_preset("Temp", {"date": "d"})
+        db.delete_csv_mapping_preset("Temp")
+        assert db.get_csv_mapping_preset("Temp") is None
+        assert "temp" not in db.list_csv_mapping_presets()
+
+    def test_reject_empty_name(self):
+        """Saving with an empty name raises ValueError."""
+        with pytest.raises(ValueError, match="Preset name cannot be empty"):
+            db.save_csv_mapping_preset("", {"date": "d"})
+
+    def test_case_insensitive_lookup(self):
+        """Saving 'MyBank' and asking for 'mybank' should find it."""
+        db.save_csv_mapping_preset("MyBank", {"date": "d"})
+        assert db.get_csv_mapping_preset("mybank") is not None
+        assert db.get_csv_mapping_preset("MYBANK") is not None
+
+
+class TestAnalyzeCSV:
+    """Tests for the analyze_csv helper used by the column-mapper UI."""
+
+    def test_known_format_has_no_missing(self):
+        """A Chase-style CSV should auto-detect cleanly with no missing fields."""
+        csv = (
+            "Date,Description,Amount,Type,Balance\n"
+            "01/15/2026,STARBUCKS,-4.95,Sale,1234.56\n"
+        )
+        result = db.analyze_csv(csv)
+        assert result['error'] is None
+        assert result['missing'] == []
+        assert result['autodetected']['date'] == 'date'
+        assert result['autodetected']['amount'] == 'amount'
+        assert len(result['preview']) == 1
+
+    def test_unknown_columns_report_missing(self):
+        """A CSV with unrecognised column names lists the missing required fields."""
+        csv = (
+            "Trans Date,Memo,Withdrawal,Balance\n"
+            "2026-01-15,STARBUCKS,4.95,100.00\n"
+        )
+        result = db.analyze_csv(csv)
+        assert result['error'] is None
+        # Date column isn't in our aliases — should report missing.
+        assert 'date' in result['missing']
+        assert 'amount' in result['missing']
+        # But all four column names should still be visible to the UI.
+        assert 'trans date' in result['columns']
+        assert 'withdrawal' in result['columns']
+
+    def test_error_on_malformed_csv(self):
+        """Garbage input should return an error message, not crash."""
+        result = db.analyze_csv("\x00\x01not a csv")
+        # Either parses to a weird df, or errors out — both acceptable; main thing is no crash.
+        assert isinstance(result, dict)
+
+
+class TestCSVColumnMappingOverride:
+    """Tests for the explicit column_mapping + dayfirst overrides."""
+
+    def test_import_with_explicit_mapping(self):
+        """Providing a column_mapping makes the importer accept unknown column names."""
+        csv = (
+            "Trans Date,Memo,Withdrawal,Deposit\n"
+            "2026-01-15,COFFEE,4.95,\n"
+            "2026-01-16,PAYCHECK,,1500.00\n"
+        )
+        mapping = {
+            'date': 'trans date',
+            'debit': 'withdrawal',
+            'credit': 'deposit',
+            'desc': 'memo',
+        }
+        imported, skipped, errors = db.import_transactions_csv(csv, column_mapping=mapping)
+        assert imported == 2
+        assert skipped == 0
+        assert errors is None
+        df = db.get_all_transactions()
+        coffee = df[df['description'] == 'COFFEE'].iloc[0]
+        paycheck = df[df['description'] == 'PAYCHECK'].iloc[0]
+        assert coffee['type'] == 'Expense' and coffee['amount'] == 4.95
+        assert paycheck['type'] == 'Income' and paycheck['amount'] == 1500.00
+
+    def test_dayfirst_true_uk_style(self):
+        """02/03/2026 with dayfirst=True parses as 2 March 2026 (UK)."""
+        csv = "date,amount,description\n02/03/2026,10,test\n"
+        imported, _, _ = db.import_transactions_csv(csv, dayfirst=True)
+        assert imported == 1
+        assert db.get_all_transactions().iloc[0]['date'] == '2026-03-02'
+
+    def test_dayfirst_false_us_style(self):
+        """02/03/2026 with dayfirst=False parses as 3 February 2026 (US)."""
+        csv = "date,amount,description\n02/03/2026,10,test\n"
+        imported, _, _ = db.import_transactions_csv(csv, dayfirst=False)
+        assert imported == 1
+        assert db.get_all_transactions().iloc[0]['date'] == '2026-02-03'

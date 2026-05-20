@@ -1,13 +1,19 @@
 """
 _shared.py — Small UI helpers reused across multiple views.
 
-Right now this is just the confirm-delete dialog factory: every page that
-deletes something (transactions, accounts, budgets) used to define its own
-near-identical confirmation pop-up. The factory below replaces all of them.
+Holds:
+  * confirm_delete_dialog — one shared confirmation pop-up used by the
+    transactions, accounts, and budgets delete flows so each one doesn't
+    have to define its own near-identical @st.dialog block.
+  * render_currency_selector — the sidebar drop-down that lets the user
+    switch the display currency ($/£/€). Called once from app.py so it
+    appears on every page.
 """
 
 from typing import Callable
 import streamlit as st
+
+import database as db
 
 
 def confirm_delete_dialog(title: str, body: str, on_confirm: Callable[[], None],
@@ -20,7 +26,7 @@ def confirm_delete_dialog(title: str, body: str, on_confirm: Callable[[], None],
     title : str
         Heading shown at the top of the pop-up (e.g. "Delete Transaction?").
     body : str
-        The warning message shown inside the pop-up (supports markdown).
+        Warning message shown inside the pop-up (markdown supported).
     on_confirm : Callable
         Function to run when the user clicks the confirm button.
     key_suffix : str
@@ -45,3 +51,29 @@ def confirm_delete_dialog(title: str, body: str, on_confirm: Callable[[], None],
             st.rerun()
 
     _dialog()
+
+
+def render_currency_selector() -> None:
+    """Draw the "Display Currency" drop-down in the sidebar.
+
+    The selection is saved to the database so it persists between sessions.
+    Changing the currency triggers a rerun, which re-renders every page with
+    the new symbol via db.format_money().
+    """
+    current = db.get_currency()
+    options = db.SUPPORTED_CURRENCIES
+    idx = options.index(current) if current in options else 0
+
+    st.sidebar.markdown("### 💱 Display Currency")
+    choice = st.sidebar.selectbox(
+        "Currency symbol",
+        options,
+        index=idx,
+        key="currency_selector",
+        label_visibility="collapsed",
+        help="Switches the symbol shown next to amounts everywhere in the app. "
+             "Does NOT convert numbers — your stored values stay the same.",
+    )
+    if choice != current:
+        db.set_currency(choice)
+        st.rerun()

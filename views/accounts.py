@@ -14,7 +14,7 @@ import os
 
 def _open_delete_account_dialog(account_id, name, account_type, balance):
     """Open the "are you sure?" pop-up before permanently deleting an account."""
-    body = f"Delete account **{name}** ({account_type}) with balance **${balance:,.2f}**?"
+    body = f"Delete account **{name}** ({account_type}) with balance **{db.format_money(balance)}**?"
     caption = ("This only removes the account record — your transactions are not affected. "
                "This cannot be undone.")
     confirm_delete_dialog(
@@ -45,7 +45,8 @@ def render_accounts():
             a_type = st.selectbox("Account Type", ACCOUNT_TYPES)
         with col2:
             a_balance = st.number_input(
-                "Current Balance ($)", value=0.00, format="%.2f",
+                f"Current Balance ({db.get_currency()})",
+                value=0.00, format="%.2f",
                 help="Enter a negative value for liabilities (e.g. -2500 for a credit-card balance owed)."
             )
 
@@ -64,7 +65,7 @@ def render_accounts():
     # --- View accounts and pick one to delete ---
     st.subheader("Current Asset Breakdown")
     net_worth = db.get_net_worth()
-    st.metric("Total Tracked Net Worth", f"${net_worth:,.2f}")
+    st.metric("Total Tracked Net Worth", db.format_money(net_worth))
 
     df = db.get_all_accounts()
     if not df.empty:
