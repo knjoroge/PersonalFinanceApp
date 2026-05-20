@@ -37,11 +37,19 @@ def main():
     st.sidebar.title("💰 Finance Manager")
     st.sidebar.markdown("---")
 
-    # Let the user choose which page to view
+    # Let the user choose which page to view.
     page = st.sidebar.radio(
         "Navigate",
         ["Dashboard", "Transactions", "Net Worth & Accounts", "AI Advisor"]
     )
+
+    st.sidebar.markdown("---")
+
+    # Currency selector — visible on every page.
+    # Lives here (instead of inside each view) so it's never confusing where
+    # to find it, and so changes are picked up by every page immediately.
+    from views._shared import render_currency_selector
+    render_currency_selector()
 
     st.sidebar.markdown("---")
     st.sidebar.info(

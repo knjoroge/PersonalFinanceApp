@@ -44,6 +44,30 @@ That's it — **no renaming columns, no reformatting**. The app automatically de
 
 > 💡 **Re-importing the same statement is safe.** Rows that exactly match an existing transaction (same date, amount, type, and description) are skipped automatically, so you can upload overlapping statements without creating duplicates. The import summary will tell you how many rows were new vs skipped.
 
+### 🛠️ If your bank isn't auto-detected
+
+Some banks use unusual column names (e.g. *Trans Date*, *Withdrawal*, *Memo*) that the app doesn't recognise out of the box. When that happens you'll see a **column-mapper** instead of the one-click Import button:
+
+1. A **preview** of the first 5 rows of your file is shown so you can see the data.
+2. For each missing field (**Date**, **Amount**, optionally **Description / Category / Type**) pick the matching column from your file using the drop-downs.
+3. If your file uses single Amount values (with negative numbers for purchases) map only **Amount column**. If your bank uses two separate columns for money out and money in (like NatWest's Debit/Credit), leave Amount as *(none)* and map **Debit** and **Credit** instead.
+4. Choose the **Date format**:
+    - **Auto / DD-first (UK)** — for dates like `31/12/2026`.
+    - **MM-first (US)** — for dates like `12/31/2026`. ⚠️ If your dates look swapped after import, this is the toggle to flip.
+5. Click **✅ Confirm Import**.
+
+Everything else (duplicate detection, validation, the import summary) works exactly the same as for auto-detected formats.
+
+---
+
+## 💱 Switching Currency
+
+The sidebar has a **💱 Display Currency** drop-down (right below the page nav). Pick **$**, **£**, or **€**, and every amount across the app re-renders with that symbol — dashboard, transactions, accounts, budgets, AI advisor, and the labels on every input box.
+
+> **Heads up:** changing the currency does **not** convert any numbers — it only swaps the symbol. If you've been tracking dollars and switch to pounds, your $1,200 rent will now show as £1,200. This is a display setting only; mixing currencies in one set of accounts is up to you. If you bank with both USD and GBP institutions, pick whichever symbol you want to think in and treat the numbers as a single shared unit.
+
+Your choice is saved automatically and persists across sessions.
+
 ---
 
 ## 🎯 Step 3: Set Your Budgets

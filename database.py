@@ -8,7 +8,7 @@ Handles transactions, accounts, budgets, preferences, CSV import/export, and bac
 import sqlite3
 import shutil
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Tuple, Union, Dict
 import os
 import io
@@ -234,6 +234,95 @@ def set_preference(key: str, value: str) -> None:
     )
 
 
+# --- Currency (display-only; no FX conversion) ---
+
+CURRENCY_KEY = "display_currency"
+DEFAULT_CURRENCY = "$"
+SUPPORTED_CURRENCIES = ["$", "£", "€"]
+
+
+def get_currency() -> str:
+    """Return the user's chosen display currency symbol (defaults to '$')."""
+    return get_preference(CURRENCY_KEY, DEFAULT_CURRENCY) or DEFAULT_CURRENCY
+
+
+def set_currency(symbol: str) -> None:
+    """Save the user's chosen display currency. Rejects unknown symbols."""
+    if symbol not in SUPPORTED_CURRENCIES:
+        raise ValueError(
+            f"Unsupported currency '{symbol}'. Pick one of: {', '.join(SUPPORTED_CURRENCIES)}."
+        )
+    set_preference(CURRENCY_KEY, symbol)
+
+
+def format_money(value: float, decimals: int = 2) -> str:
+    """Format a number with the user's chosen currency symbol.
+
+    Picks the thousands/decimal separator from the currency choice so the
+    output looks native — `$1,234.50`, `£1,234.50` (UK uses the same
+    convention as US for personal finance), and `€1.234,50` (continental EU).
+    Pure display helper — never converts, never rounds beyond `decimals`.
+    """
+    sym = get_currency()
+    if sym == "€":
+        # Continental EU: dot for thousands, comma for decimals.
+        formatted = f"{value:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"{sym}{formatted}"
+    return f"{sym}{value:,.{decimals}f}"
+
+
+# --- CSV import mapping presets (saved per bank in the preferences table) ---
+
+# All preset keys live under this prefix so we can list them cheaply.
+_CSV_PRESET_PREFIX = "csv_preset:"
+
+
+def save_csv_mapping_preset(name: str, mapping: Dict[str, Optional[str]],
+                            dayfirst: bool = True) -> None:
+    """Save a column-mapping under a friendly name (e.g. "MyBank") so the user
+    can re-apply it next time they import a file from the same bank.
+
+    The mapping is stored as JSON inside the existing preferences table —
+    no new schema needed. Names are case-insensitive.
+    """
+    import json
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("Preset name cannot be empty.")
+    payload = json.dumps({"mapping": mapping, "dayfirst": bool(dayfirst)})
+    set_preference(_CSV_PRESET_PREFIX + name.lower(), payload)
+
+
+def list_csv_mapping_presets() -> list:
+    """Return the names of every saved CSV mapping preset."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT key FROM preferences WHERE key LIKE ? ORDER BY key",
+            (_CSV_PRESET_PREFIX + "%",),
+        ).fetchall()
+    return [r[0][len(_CSV_PRESET_PREFIX):] for r in rows]
+
+
+def get_csv_mapping_preset(name: str) -> Optional[Dict]:
+    """Look up a saved CSV mapping by name. Returns None if unknown."""
+    import json
+    raw = get_preference(_CSV_PRESET_PREFIX + (name or "").strip().lower())
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def delete_csv_mapping_preset(name: str) -> None:
+    """Remove a saved CSV mapping by name (no-op if it doesn't exist)."""
+    _exec(
+        "DELETE FROM preferences WHERE key = ?",
+        (_CSV_PRESET_PREFIX + (name or "").strip().lower(),),
+    )
+
+
 # --- CSV Import / Export ---
 
 def export_transactions_csv() -> Optional[str]:
@@ -243,14 +332,19 @@ def export_transactions_csv() -> Optional[str]:
 
 
 # Column-name aliases used by the smart CSV importer, in priority order.
-_DATE_ALIASES = ['date', 'transaction date', 'post date', 'posting date',
-                 'completed date', 'settled date']
-_AMOUNT_ALIASES = ['amount', 'value', 'local amount', 'cost']
-_DEBIT_ALIASES = ['debit', 'money out']
-_CREDIT_ALIASES = ['credit', 'money in']
-_DESC_ALIASES = ['description', 'name', 'payee', 'memo', 'narrative', 'transaction description']
-_CAT_ALIASES = ['category']
-_TYPE_ALIASES = ['type', 'transaction type']
+# All lower-case — _read_csv_smart() already lower-cases incoming column names.
+# To support a new bank, just add its column name to the right list below.
+_CSV_ALIASES = {
+    'date':   ['date', 'transaction date', 'post date', 'posting date',
+               'completed date', 'settled date'],
+    'amount': ['amount', 'value', 'local amount', 'cost'],
+    'debit':  ['debit', 'money out'],
+    'credit': ['credit', 'money in'],
+    'desc':   ['description', 'name', 'payee', 'memo', 'narrative',
+               'transaction description'],
+    'cat':    ['category'],
+    'type':   ['type', 'transaction type'],
+}
 
 
 def _decode_csv(content: Union[str, bytes]) -> str:
@@ -276,7 +370,7 @@ def _read_csv_smart(text: str) -> Tuple[pd.DataFrame, Optional[str]]:
     df = pd.read_csv(io.StringIO(text))
     df.columns = [str(c).strip().lower() for c in df.columns]
 
-    if any(c in df.columns for c in _DATE_ALIASES):
+    if any(c in df.columns for c in _CSV_ALIASES['date']):
         return df, None
 
     # No known date column — maybe the CSV is headerless.
@@ -308,28 +402,34 @@ def _read_csv_smart(text: str) -> Tuple[pd.DataFrame, Optional[str]]:
 
 
 def _find_csv_columns(df: pd.DataFrame, date_col_hint: Optional[str]) -> Dict[str, Optional[str]]:
-    """Match the CSV's lowercased column names against the known field aliases."""
-    def _first_match(aliases):
-        return next((c for c in aliases if c in df.columns), None)
+    """Match the CSV's lowercased column names against the known field aliases.
 
-    return {
-        'date':   date_col_hint or _first_match(_DATE_ALIASES),
-        'amount': _first_match(_AMOUNT_ALIASES),
-        'debit':  _first_match(_DEBIT_ALIASES),
-        'credit': _first_match(_CREDIT_ALIASES),
-        'desc':   _first_match(_DESC_ALIASES),
-        'cat':    _first_match(_CAT_ALIASES),
-        'type':   _first_match(_TYPE_ALIASES),
+    Returns a dict mapping each logical field (date, amount, debit, credit,
+    desc, cat, type) to the actual column name found in the CSV, or None
+    when no match exists.
+    """
+    cols = {
+        field: next((c for c in aliases if c in df.columns), None)
+        for field, aliases in _CSV_ALIASES.items()
     }
+    if date_col_hint:
+        cols['date'] = date_col_hint
+    return cols
 
 
-def _parse_csv_date(raw) -> str:
-    """Turn whatever the CSV gave us into a YYYY-MM-DD string."""
+def _parse_csv_date(raw, dayfirst: bool = True) -> str:
+    """Turn whatever the CSV gave us into a YYYY-MM-DD string.
+
+    `dayfirst` controls how ambiguous dates like "02/03/2026" are read.
+    - dayfirst=True (default): "02/03/2026" → 2 March 2026 (UK style)
+    - dayfirst=False:           "02/03/2026" → 3 February 2026 (US style)
+    Unambiguous dates (e.g. "2026-03-15") parse the same either way.
+    """
     try:
         import warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
-            return pd.to_datetime(raw, dayfirst=True).strftime("%Y-%m-%d")
+            return pd.to_datetime(raw, dayfirst=dayfirst).strftime("%Y-%m-%d")
     except Exception:
         return str(raw).strip()
 
@@ -390,18 +490,75 @@ def _existing_transaction_keys() -> set:
     return {(d, float(a), t, (desc or "").strip()) for d, a, t, desc in rows}
 
 
-def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, int, Optional[str]]:
-    """
-    Import transactions from a CSV string using smart column mapping.
+# Fields the importer needs at minimum. "amount" can be satisfied EITHER by a
+# single amount column OR by a debit + credit pair (see _parse_amount_and_type).
+_CSV_REQUIRED_FIELDS = ("date", "amount")
 
-    Supports most major bank formats automatically, including Chase, Monzo,
-    NatWest, Barclays, Bank of America, Wells Fargo, Revolut, and DCU.
+
+def analyze_csv(csv_content: Union[str, bytes]) -> Dict:
+    """Inspect a CSV without importing it. Used by the UI to decide whether
+    we can import in one click or need to ask the user to map columns.
+
+    Returns a dict with:
+      * 'preview'        — a DataFrame of the first 5 rows (or None on error)
+      * 'columns'        — the list of column names found in the file
+      * 'autodetected'   — mapping of logical-field → detected column name
+                           (values can be None when not detected)
+      * 'missing'        — list of required fields that auto-detect couldn't find
+      * 'date_col_hint'  — internal hint for headerless CSVs (pass-through)
+      * 'error'          — error message if the file couldn't be parsed
+    """
+    try:
+        text = _decode_csv(csv_content)
+        df, date_col_hint = _read_csv_smart(text)
+    except Exception as e:
+        return {
+            'preview': None, 'columns': [], 'autodetected': {}, 'missing': list(_CSV_REQUIRED_FIELDS),
+            'date_col_hint': None, 'error': f"Failed to parse CSV: {str(e)}",
+        }
+
+    cols = _find_csv_columns(df, date_col_hint)
+
+    # "Amount" is considered satisfied if either the single Amount column OR
+    # a debit/credit pair is present.
+    has_amount = bool(cols['amount']) or (bool(cols['debit']) and bool(cols['credit']))
+    missing = []
+    if not cols['date']:
+        missing.append('date')
+    if not has_amount:
+        missing.append('amount')
+
+    return {
+        'preview': df.head(5),
+        'columns': list(df.columns),
+        'autodetected': cols,
+        'missing': missing,
+        'date_col_hint': date_col_hint,
+        'error': None,
+    }
+
+
+def import_transactions_csv(
+    csv_content: Union[str, bytes],
+    column_mapping: Optional[Dict[str, Optional[str]]] = None,
+    dayfirst: bool = True,
+) -> Tuple[int, int, Optional[str]]:
+    """Import transactions from a CSV string.
+
+    Supports most major bank formats automatically (Chase, Monzo, NatWest,
+    Barclays, Bank of America, Wells Fargo, Revolut, DCU).
+
+    For unknown banks, the caller can pass an explicit `column_mapping` from
+    analyze_csv() output — e.g. `{'date': 'Trans Date', 'amount': 'Withdrawal',
+    'desc': 'Memo'}` — to override auto-detect.
+
+    `dayfirst` controls how ambiguous dates like "02/03/2026" are read.
+    Pass False for US-style MM/DD dates, True (default) for UK-style DD/MM.
 
     Skips rows that exactly match an existing transaction (same date, amount,
-    type, and description) to make re-importing the same statement safe.
+    type, description) so re-importing the same statement is safe.
 
-    All valid rows are inserted in a single transaction for speed — a 500-row
-    file commits once instead of 500 times.
+    All valid rows are inserted in a single batch for speed.
 
     Returns (count_imported, count_skipped_duplicates, error_message).
     """
@@ -411,7 +568,12 @@ def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, int, O
     except Exception as e:
         return 0, 0, f"Failed to parse CSV: {str(e)}"
 
+    # Start from auto-detection, then let the caller's mapping override any field.
     cols = _find_csv_columns(df, date_col_hint)
+    if column_mapping:
+        for field, col in column_mapping.items():
+            if field in cols and col:
+                cols[field] = col
 
     if not cols['date']:
         return 0, 0, f"Missing a date column. Found columns: {', '.join(df.columns)}"
@@ -445,7 +607,7 @@ def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, int, O
             if cols['desc'] and pd.notnull(row[cols['desc']]):
                 desc = str(row[cols['desc']]).strip()
 
-            date_str = _parse_csv_date(raw_date)
+            date_str = _parse_csv_date(raw_date, dayfirst=dayfirst)
             _validate_transaction(date_str, amount, category, t_type)
 
             key = (date_str, float(amount), t_type, desc.strip())
@@ -467,6 +629,65 @@ def import_transactions_csv(csv_content: Union[str, bytes]) -> Tuple[int, int, O
             conn.commit()
 
     return len(rows_to_insert), skipped, ("; ".join(errors) if errors else None)
+
+
+# --- Demo data (helper for empty-state onboarding) ---
+
+def load_demo_data() -> int:
+    """Populate the database with a small, realistic month of sample data.
+
+    Used by the empty-state on the Dashboard so first-time users can click
+    one button and immediately see what every page is supposed to look like.
+    Skips silently if there are already transactions — never overwrites real data.
+    Returns the number of transactions inserted (0 if it was a no-op).
+    """
+    if not get_all_transactions().empty:
+        return 0
+
+    today = datetime.now()
+    # 30-day sample mixing salary, rent, groceries, transport, coffee, subscriptions.
+    samples = [
+        (0,  3500.00, "Salary",         "Income",  "Monthly salary"),
+        (-2, 1200.00, "Housing",        "Expense", "Rent payment"),
+        (-3,   85.40, "Food",           "Expense", "Whole Foods groceries"),
+        (-4,   42.50, "Transportation", "Expense", "Shell gas"),
+        (-5,   12.99, "Entertainment",  "Expense", "Netflix subscription"),
+        (-7,    6.25, "Food",           "Expense", "Starbucks coffee"),
+        (-8,   75.00, "Healthcare",     "Expense", "Dentist co-pay"),
+        (-9,  220.00, "Utilities",      "Expense", "Electric + Internet bill"),
+        (-11, 150.00, "Bonus",          "Income",  "Side hustle payment"),
+        (-13,  29.99, "Entertainment",  "Expense", "Concert tickets"),
+        (-15,  60.18, "Food",           "Expense", "Tesco groceries"),
+        (-18, 100.00, "Savings",        "Expense", "Transfer to emergency fund"),
+        (-20,  14.50, "Transportation", "Expense", "Uber ride"),
+        (-22,  45.99, "Other",          "Expense", "Amazon purchase"),
+        (-25,   9.99, "Entertainment",  "Expense", "Spotify subscription"),
+        (-28,  18.75, "Food",           "Expense", "Lunch with team"),
+    ]
+    rows = [
+        (
+            (today + timedelta(days=offset)).strftime("%Y-%m-%d"),
+            amount, category, t_type, desc,
+        )
+        for offset, amount, category, t_type, desc in samples
+    ]
+    with _connect() as conn:
+        conn.executemany(
+            "INSERT INTO transactions (date, amount, category, type, description) VALUES (?, ?, ?, ?, ?)",
+            rows,
+        )
+        # Three sample accounts to give Net Worth + the dashboard's net worth metric something to show.
+        ts = today.strftime("%Y-%m-%d %H:%M:%S")
+        conn.executemany(
+            "INSERT INTO accounts (name, type, balance, last_updated) VALUES (?, ?, ?, ?)",
+            [
+                ("Demo Checking",  "Checking", 2400.00,  ts),
+                ("Demo Savings",   "Savings",  8500.00,  ts),
+                ("Demo Credit Card", "Credit Card", -450.00, ts),
+            ],
+        )
+        conn.commit()
+    return len(rows)
 
 
 # --- Database Backup & Restore ---

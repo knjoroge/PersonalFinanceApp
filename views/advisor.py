@@ -28,9 +28,13 @@ def _top_expense_categories(df_trans: pd.DataFrame, n: int = 3) -> list:
 def _build_finance_context(total_income: float, total_expense: float,
                            net_balance: float, savings_rate: float,
                            net_worth: float, top_categories: list) -> str:
-    """Build the context prompt that gives the AI a snapshot of the user's finances."""
+    """Build the context prompt that gives the AI a snapshot of the user's finances.
+
+    Uses the user's chosen currency symbol so the AI sees and responds in the
+    same units the user is reading on the dashboard.
+    """
     if top_categories:
-        top_lines = "\n    ".join(f"- {cat}: ${amt:,.2f}" for cat, amt in top_categories)
+        top_lines = "\n    ".join(f"- {cat}: {db.format_money(amt)}" for cat, amt in top_categories)
         top_section = f"Top spending categories:\n    {top_lines}"
     else:
         top_section = "Top spending categories: (no expenses logged yet)"
@@ -38,11 +42,11 @@ def _build_finance_context(total_income: float, total_expense: float,
     return f"""
     You are an expert, helpful personal finance assistant.
     Here is the user's current financial context:
-    - Total Logged Income: ${total_income:,.2f}
-    - Total Logged Expenses: ${total_expense:,.2f}
-    - Net Balance (Income - Expense): ${net_balance:,.2f}
+    - Total Logged Income: {db.format_money(total_income)}
+    - Total Logged Expenses: {db.format_money(total_expense)}
+    - Net Balance (Income - Expense): {db.format_money(net_balance)}
     - Savings Rate: {savings_rate:.1f}%
-    - Total Net Worth (Sum of Accounts): ${net_worth:,.2f}
+    - Total Net Worth (Sum of Accounts): {db.format_money(net_worth)}
     {top_section}
 
     Please use this context to provide personalized, specific, and actionable advice.
@@ -120,21 +124,23 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
 
     avg_income = _avg_monthly_income(df_trans)
     default_income = avg_income if avg_income > 0 else 4000.0
-    help_txt = (f"Pre-filled with your average monthly income (${avg_income:,.2f}). Edit if needed."
-                if avg_income > 0 else
-                "Add some income transactions to auto-fill this from your data.")
+    help_txt = (
+        f"Pre-filled with your average monthly income ({db.format_money(avg_income)}). Edit if needed."
+        if avg_income > 0 else
+        "Add some income transactions to auto-fill this from your data."
+    )
 
     income_input = st.number_input(
-        "Monthly Net Income for projection ($):",
+        f"Monthly Net Income for projection ({db.get_currency()}):",
         min_value=1.0, value=default_income, step=100.0, help=help_txt,
     )
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Needs (50%)", f"${income_input * 0.5:,.2f}")
+    c1.metric("Needs (50%)", db.format_money(income_input * 0.5))
     c1.caption("Housing, groceries, utilities, minimum debt payments.")
-    c2.metric("Wants (30%)", f"${income_input * 0.3:,.2f}")
+    c2.metric("Wants (30%)", db.format_money(income_input * 0.3))
     c2.caption("Entertainment, dining out, hobbies.")
-    c3.metric("Savings & Debt (20%)", f"${income_input * 0.2:,.2f}")
+    c3.metric("Savings & Debt (20%)", db.format_money(income_input * 0.2))
     c3.caption("Investments, emergency fund, extra debt payments.")
 
     st.markdown("---")
@@ -143,10 +149,16 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     st.write("See how your investments could grow over time.")
 
     c1, c2, c3, c4 = st.columns(4)
-    principal = c1.number_input("Starting Amount ($)", min_value=0, value=1000, step=100)
-    monthly_contrib = c2.number_input("Monthly Contribution ($)", min_value=0, value=200, step=50)
+    principal = c1.number_input(
+        f"Starting Amount ({db.get_currency()})", min_value=0, value=1000, step=100,
+    )
+    monthly_contrib = c2.number_input(
+        f"Monthly Contribution ({db.get_currency()})", min_value=0, value=200, step=50,
+    )
     years = c3.slider("Years to Grow", min_value=1, max_value=40, value=10)
-    rate = c4.number_input("Annual Return (%)", min_value=0.0, max_value=30.0, value=7.0, step=0.5) / 100.0
+    rate = c4.number_input(
+        "Annual Return (%)", min_value=0.0, max_value=30.0, value=7.0, step=0.5,
+    ) / 100.0
 
     df_growth = _compound_growth(principal, monthly_contrib, rate, years)
     st.line_chart(df_growth.set_index("Year"))
@@ -156,9 +168,9 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     total_interest = final_value - total_contributed
 
     m1, m2, m3 = st.columns(3)
-    m1.metric(f"Projected Value ({years}yr)", f"${final_value:,.2f}")
-    m2.metric("Total Contributed", f"${total_contributed:,.2f}")
-    m3.metric("Interest Earned", f"${total_interest:,.2f}")
+    m1.metric(f"Projected Value ({years}yr)", db.format_money(final_value))
+    m2.metric("Total Contributed", db.format_money(total_contributed))
+    m3.metric("Interest Earned", db.format_money(total_interest))
 
 
 def _render_chat_tab(api_key: str, finance_context: str) -> None:
