@@ -306,8 +306,17 @@ def _render_csv_section() -> None:
                 st.success("✅ Format recognised automatically.")
                 with st.expander("Preview (first 5 rows)"):
                     st.dataframe(analysis['preview'], use_container_width=True, hide_index=True)
+                # Date-format selector is offered here too so users can fix
+                # US-style MM/DD dates without forcing the whole mapper UI to appear.
+                date_mode = st.radio(
+                    "Date format",
+                    ["DD-first (UK: 31/12/2026)", "MM-first (US: 12/31/2026)"],
+                    horizontal=True, key="auto_dayfirst",
+                    help="Default is DD-first (UK style). Switch to MM-first if your dates look wrong after import.",
+                )
+                dayfirst = date_mode.startswith("DD-first")
                 if st.button("📥 Import", use_container_width=True):
-                    imported, skipped, errors = db.import_transactions_csv(content)
+                    imported, skipped, errors = db.import_transactions_csv(content, dayfirst=dayfirst)
                     _show_import_result(imported, skipped, errors)
             else:
                 # Auto-detect couldn't find one or more required fields — fall back to manual map.
