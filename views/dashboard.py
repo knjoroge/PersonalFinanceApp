@@ -18,6 +18,17 @@ MONTHLY_GOAL_KEY = "monthly_expense_goal"
 DEFAULT_MONTHLY_GOAL = 2000.0
 
 
+def _current_month_rows(df_trans: pd.DataFrame) -> pd.DataFrame:
+    """Return only the transactions dated within the current calendar month.
+
+    Shared by the budget tracker and the monthly expense goal — both are always
+    scoped to "this month" regardless of the dashboard's selected time filter.
+    Expects df_trans['date'] to already be datetime.
+    """
+    today = pd.Timestamp.today()
+    return df_trans[df_trans['date'].dt.to_period('M') == today.to_period('M')]
+
+
 def _open_delete_budget_dialog(budget_id, category, monthly_limit):
     """Open the "are you sure?" pop-up before removing a category budget."""
     body = f"Remove the budget for **{category}** ({db.format_money(monthly_limit, 0)}/month)?"
@@ -42,7 +53,7 @@ def _render_filters(df_trans: pd.DataFrame) -> pd.DataFrame:
     st.sidebar.markdown("### Dashboard Filters")
     filter_option = st.sidebar.selectbox(
         "Time Period",
-        ("All Time", "This Month", "Last Month", "Last 90 Days", "Custom Range")
+        ("This Month", "Last Month", "Last 90 Days", "All Time", "Custom Range")
     )
 
     today = datetime.today()
@@ -97,12 +108,25 @@ def _render_metrics(filtered_df: pd.DataFrame, net_worth: float) -> None:
     st.markdown("<br>", unsafe_allow_html=True)
 
 
-def _render_budget_tracker(filtered_df: pd.DataFrame, budgets_df: pd.DataFrame) -> None:
-    """Show colour-coded progress bars for each category budget (green/yellow/red)."""
-    st.markdown("### 🎯 Category Budget Tracker")
+def _render_budget_tracker(df_trans: pd.DataFrame, budgets_df: pd.DataFrame) -> None:
+    """Show colour-coded progress bars for each category budget (green/yellow/red).
 
-    df_expenses = filtered_df[filtered_df['type'] == 'Expense']
+    Budget limits are monthly, so spend is always measured against the CURRENT
+    calendar month — never the dashboard's selected filter. Otherwise an
+    "All Time" filter would compare months of spend against a one-month limit
+    and every bar would look maxed out.
+    """
+    this_month = _current_month_rows(df_trans)
+    df_expenses = this_month[this_month['type'] == 'Expense']
     expense_by_cat = df_expenses.groupby('category')['amount'].sum() if not df_expenses.empty else pd.Series(dtype=float)
+
+    st.markdown(f"### 🎯 Category Budget Tracker ({pd.Timestamp.today().strftime('%B %Y')})")
+
+    # One-glance alert: which categories have blown past their monthly limit.
+    over = [row['category'] for _, row in budgets_df.iterrows()
+            if row['monthly_limit'] > 0 and expense_by_cat.get(row['category'], 0.0) > row['monthly_limit']]
+    if over:
+        st.error(f"🔴 Over budget this month in: **{', '.join(over)}**")
 
     budget_cols = st.columns(min(len(budgets_df), 4))
     for idx, (_, row) in enumerate(budgets_df.iterrows()):
@@ -127,7 +151,7 @@ def _render_monthly_goal(df_trans: pd.DataFrame) -> None:
     saved to the preferences table so it persists between sessions.
     """
     today = pd.Timestamp.today()
-    this_month = df_trans[df_trans['date'].dt.to_period('M') == today.to_period('M')]
+    this_month = _current_month_rows(df_trans)
     month_expense = this_month[this_month['type'] == 'Expense']['amount'].sum()
 
     stored = db.get_preference(MONTHLY_GOAL_KEY)
@@ -298,7 +322,7 @@ def render_dashboard():
 
     budgets_df = db.get_all_budgets()
     if not budgets_df.empty:
-        _render_budget_tracker(filtered_df, budgets_df)
+        _render_budget_tracker(df_trans, budgets_df)
 
     _render_monthly_goal(df_trans)
     _render_manage_budgets(budgets_df)
