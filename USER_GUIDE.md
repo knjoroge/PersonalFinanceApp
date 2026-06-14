@@ -20,6 +20,8 @@ Start by telling the app about your bank accounts, retirement funds, investments
 
 Repeat for each account you want to track. You only need to update these once a month or so.
 
+The page shows three headline numbers — **Total Assets**, **Total Liabilities**, and **Net Worth** — so you can see what you own and what you owe at a glance. (Liabilities are displayed as a positive amount under their own label; Net Worth is assets minus liabilities.)
+
 ---
 
 ## 📝 Step 2: Add Your Transactions
@@ -29,7 +31,17 @@ Now let's start tracking where your money goes.
 1. Click **Transactions** in the sidebar.
 2. Open the **➕ Add New Transaction** section.
 3. Fill in the date, amount, type (Income or Expense), category, and an optional description.
-4. Click **Save Transaction**.
+4. Click **Save Transaction**. The form stays open so you can quickly add another.
+
+> 💡 Use the **Quick-add** buttons at the top of the form (Salary, Rent, Coffee, etc.) to pre-fill common transactions in one click, then tweak before saving.
+
+### 🔎 Browsing your history
+
+Below the add form, your full transaction history is searchable and filterable:
+- Filter by **Type**, **Category**, or a **Date range**, and use the **search box** to match any description, category, type, or amount.
+- Income shows with a `+` and expenses with a `-`, and a caption shows the **income / expenses / net totals** for whatever you've filtered to.
+- A **✖ Clear filters** button appears when any filter is active.
+- Click rows to select them — one row enables **Edit / Delete**, multiple rows enable **bulk delete** and exporting just the filtered view.
 
 ### 📁 Import from Your Bank (the easy way)
 
@@ -40,7 +52,7 @@ Don't feel like entering transactions one by one? You don't have to!
 3. Back in the app, open the **📁 Import / Export CSV** section on the Transactions page.
 4. Upload the file and click **📥 Import**.
 
-That's it — **no renaming columns, no reformatting**. The app automatically detects your bank's format and imports everything. Negative amounts become Expenses, positive amounts become Income, and any transactions your bank doesn't categorise will be labelled "Other" (you can always edit them later).
+That's it — **no renaming columns, no reformatting**. The app automatically detects your bank's format and imports everything. Negative amounts become Expenses, positive amounts become Income. If your bank's file has no category column, the app **guesses an expense category from each description** (e.g. "TESCO" → Food, "Uber" → Transportation, "Netflix" → Entertainment); anything it can't recognise becomes "Other" (you can always edit them later).
 
 > 💡 **Re-importing the same statement is safe.** Rows that exactly match an existing transaction (same date, amount, type, and description) are skipped automatically, so you can upload overlapping statements without creating duplicates. The import summary will tell you how many rows were new vs skipped.
 
@@ -111,8 +123,10 @@ To use the chat, you need a **Google Gemini API Key** (you can get one for free 
 
 **Where to enter the key:** On the AI Advisor page, paste it into the **🔑 Gemini API Key** box in the **left sidebar**. Once set, the sidebar will show a "Key set for this session" confirmation, with a **Clear Key** button if you want to remove it.
 
+**Skip re-typing it every time:** create a file named `.env` in the project folder with the line `GEMINI_API_KEY=your-key-here`. The app loads it automatically on startup, so the chat works without touching the sidebar. The `.env` file is gitignored and never leaves your computer.
+
 **🔒 Privacy & Security Notes:**
-* **Your API Key is never saved to your computer.** It only lives in your browser session and disappears when you close the app. You'll need to enter it each time you want to chat.
+* **Your API Key is never written to the database.** A key typed into the sidebar lives only in your browser session and disappears when you close the app. (A key in `.env` stays in that local file, which is gitignored.)
 * **The AI does NOT see your individual transactions.** It only sees your high-level numbers: Total Income, Total Expenses, Net Balance, and Total Net Worth.
 * You can click the **"View Data sent to AI"** dropdown above the chat to see exactly what information is being shared.
 

@@ -25,6 +25,39 @@ INCOME_CATEGORIES = ["Salary", "Bonus", "Investment", "Side Hustle", "Other"]
 EXPENSE_CATEGORIES = ["Housing", "Food", "Transportation", "Utilities", "Insurance",
                       "Healthcare", "Savings", "Debt", "Entertainment", "Other"]
 
+# Keyword → expense category guesses for CSV imports that have no category column.
+# Matched against the (lower-cased) transaction description. First hit wins, so
+# order the lists from most to least specific. Add a bank's common payees here.
+_CATEGORY_KEYWORDS = {
+    "Food":           ["grocery", "groceries", "supermarket", "tesco", "aldi", "lidl",
+                        "sainsbury", "walmart", "whole foods", "restaurant", "cafe",
+                        "coffee", "starbucks", "mcdonald", "uber eats", "deliveroo", "doordash"],
+    "Transportation": ["uber", "lyft", "shell", "bp ", "chevron", "exxon", "fuel", "gas station",
+                       "petrol", "parking", "transit", "metro", "train", "airline", "flight"],
+    "Housing":        ["rent", "mortgage", "landlord", "hoa"],
+    "Utilities":      ["electric", "water", "gas bill", "internet", "broadband", "comcast",
+                       "verizon", "at&t", "phone", "mobile"],
+    "Healthcare":     ["pharmacy", "doctor", "dental", "clinic", "hospital", "cvs", "walgreens"],
+    "Insurance":      ["insurance", "geico", "allstate", "aetna"],
+    "Entertainment":  ["netflix", "spotify", "hulu", "disney", "cinema", "movie", "steam",
+                       "playstation", "xbox"],
+    "Debt":           ["loan", "credit card payment", "interest"],
+}
+
+
+def guess_category(description: str) -> str:
+    """Best-effort expense category from a transaction description (for CSV imports).
+
+    Returns a matching EXPENSE_CATEGORIES name when a keyword is found, else "Other".
+    Case-insensitive substring match — simple and predictable, no ML.
+    """
+    text = (description or "").lower()
+    for category, keywords in _CATEGORY_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return category
+    return "Other"
+
+
 ASSET_TYPES = ["Checking", "Savings", "401k", "Pension", "Shares/Brokerage",
                "Real Estate", "Other Assets"]
 LIABILITY_TYPES = ["Credit Card", "Mortgage", "Loan", "Other Liabilities"]
@@ -599,13 +632,18 @@ def import_transactions_csv(
             if amount <= 0:
                 continue  # skip zero-amount rows (e.g. auth holds)
 
-            category = "Other"
-            if cols['cat'] and pd.notnull(row[cols['cat']]) and str(row[cols['cat']]).strip():
-                category = str(row[cols['cat']]).strip()
-
             desc = ""
             if cols['desc'] and pd.notnull(row[cols['desc']]):
                 desc = str(row[cols['desc']]).strip()
+
+            if cols['cat'] and pd.notnull(row[cols['cat']]) and str(row[cols['cat']]).strip():
+                category = str(row[cols['cat']]).strip()
+            elif t_type == "Expense":
+                # No category column — guess one from the description so the
+                # pie chart and budgets aren't all lumped into "Other".
+                category = guess_category(desc)
+            else:
+                category = "Other"
 
             date_str = _parse_csv_date(raw_date, dayfirst=dayfirst)
             _validate_transaction(date_str, amount, category, t_type)

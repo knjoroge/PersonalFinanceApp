@@ -12,7 +12,7 @@ import database as db
 from datetime import datetime, timedelta
 
 from database import EXPENSE_CATEGORIES
-from views._shared import confirm_delete_dialog
+from views._shared import confirm_delete_dialog, signed_money
 
 MONTHLY_GOAL_KEY = "monthly_expense_goal"
 DEFAULT_MONTHLY_GOAL = 2000.0
@@ -98,9 +98,7 @@ def _render_metrics(filtered_df: pd.DataFrame, net_worth: float) -> None:
 
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Total Income", db.format_money(total_income))
-    m2.metric("Total Expenses", db.format_money(total_expense),
-              delta=f"-{db.format_money(total_expense)}" if total_expense > 0 else None,
-              delta_color="inverse")
+    m2.metric("Total Expenses", db.format_money(total_expense))
     m3.metric("Net Period Balance", db.format_money(net_balance))
     m4.metric("Savings Rate", f"{savings_rate:.1f}%")
     m5.metric("Total Net Worth", db.format_money(net_worth))
@@ -286,7 +284,7 @@ def _render_recent_transactions(filtered_df: pd.DataFrame) -> None:
     st.subheader("Recent Transactions (Filtered)")
     display = filtered_df.copy()
     display['date'] = display['date'].dt.strftime('%Y-%m-%d')
-    display['amount'] = display['amount'].map(lambda v: db.format_money(v))
+    display['amount'] = display.apply(lambda r: signed_money(r['amount'], r['type']), axis=1)
     st.dataframe(display.head(10)[['date', 'type', 'category', 'amount', 'description']],
                  use_container_width=True, hide_index=True)
 

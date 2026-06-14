@@ -6,6 +6,7 @@ Two tools in one:
   2. AI Chat — conversational assistant powered by Google Gemini
 """
 
+import os
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -61,7 +62,9 @@ def _render_api_key_sidebar() -> str:
     or the database. Returns the active key (empty string if not set).
     """
     if "gemini_api_key" not in st.session_state:
-        st.session_state.gemini_api_key = ""
+        # Seed from the environment (.env) so a configured key works out of the
+        # box. Users without one can still type a key into the box below.
+        st.session_state.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
     st.sidebar.markdown("### 🔑 Gemini API Key")
     if st.session_state.gemini_api_key:

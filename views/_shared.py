@@ -16,6 +16,16 @@ import streamlit as st
 import database as db
 
 
+def signed_money(amount: float, t_type: str) -> str:
+    """Format an amount with a leading +/- so income and expenses read apart at a glance.
+
+    Income shows as "+$75.00", Expense as "-$75.00". Uses the same currency
+    formatting as everywhere else via db.format_money().
+    """
+    sign = "-" if t_type == "Expense" else "+"
+    return f"{sign}{db.format_money(abs(amount))}"
+
+
 def confirm_delete_dialog(title: str, body: str, on_confirm: Callable[[], None],
                           key_suffix: str, caption: str = "This cannot be undone.",
                           confirm_label: str = "Delete") -> None:

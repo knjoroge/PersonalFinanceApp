@@ -8,7 +8,12 @@ Transactions, Net Worth & Accounts, and AI Advisor).
 """
 
 import streamlit as st
+from dotenv import load_dotenv
 from database import init_db
+
+# Load variables from a local .env file (e.g. GEMINI_API_KEY) into the
+# environment so the AI Advisor can pick the key up without manual entry.
+load_dotenv()
 
 # --- Page Setup ---
 # This must be the very first Streamlit command in the script.

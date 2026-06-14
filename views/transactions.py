@@ -10,7 +10,7 @@ import pandas as pd
 from datetime import datetime
 import database as db
 from database import INCOME_CATEGORIES, EXPENSE_CATEGORIES
-from views._shared import confirm_delete_dialog
+from views._shared import confirm_delete_dialog, signed_money
 
 
 def _open_delete_transaction_dialog(tid, t_date, t_category, t_amount, t_type):
@@ -85,7 +85,11 @@ def _render_add_form() -> None:
     The Type radio is outside the form so the Category list re-filters live
     when the user flips between Income and Expense.
     """
-    with st.expander("➕ Add New Transaction", expanded=False):
+    # Keep the form expanded once the user starts using it (after a quick-add or
+    # a save) so logging several transactions in a row doesn't re-collapse it
+    # every time.
+    with st.expander("➕ Add New Transaction",
+                     expanded=st.session_state.get("add_form_open", False)):
         # --- One-click prefill buttons ---
         st.caption("Quick-add common transactions:")
         cols = st.columns(len(_QUICK_ADD_PRESETS))
@@ -95,6 +99,7 @@ def _render_add_form() -> None:
                 st.session_state["_prefill"] = {
                     "type": p_type, "category": p_cat, "amount": p_amt, "desc": p_desc,
                 }
+                st.session_state["add_form_open"] = True
                 st.rerun()
 
         prefill = st.session_state.get("_prefill", {})
@@ -124,6 +129,7 @@ def _render_add_form() -> None:
                 db.add_transaction(t_date.strftime("%Y-%m-%d"), t_amount, t_category, t_type, t_desc)
                 st.toast("Successfully added transaction!", icon="✅")
                 st.session_state.pop("_prefill", None)  # clear so it doesn't stick
+                st.session_state["add_form_open"] = True  # keep open to add the next one
                 st.rerun()
 
 
@@ -324,14 +330,17 @@ def _render_csv_section() -> None:
 
 
 def _apply_filters(df: pd.DataFrame, type_filter: str, category_filter: str,
-                   search: str) -> pd.DataFrame:
-    """Apply the type / category / search filters to a transactions dataframe.
+                   search: str, start_date=None, end_date=None) -> pd.DataFrame:
+    """Apply the date / type / category / search filters to a transactions dataframe.
 
     Search is multi-field: it matches the description, category, type, AND
     amount (formatted as a string) so a query like "amazon" finds Amazon rows
     and "50" finds any $50 transaction.
     """
     filtered = df.copy()
+    if start_date and end_date:
+        dates = pd.to_datetime(filtered["date"]).dt.date
+        filtered = filtered[(dates >= start_date) & (dates <= end_date)]
     if type_filter != "All":
         filtered = filtered[filtered["type"] == type_filter]
     if category_filter != "All":
@@ -376,7 +385,11 @@ def _render_history(df: pd.DataFrame) -> None:
     """
     st.subheader("Transaction History")
 
-    f1, f2, f3 = st.columns([1, 1, 2])
+    # Default date range spans all transactions; users can narrow it.
+    all_dates = pd.to_datetime(df["date"])
+    min_date, max_date = all_dates.min().date(), all_dates.max().date()
+
+    f1, f2, f3, f4 = st.columns([1, 1, 2, 2])
     with f1:
         type_filter = st.selectbox("Type", ["All", "Income", "Expense"], key="trans_type_filter")
     with f2:
@@ -384,6 +397,13 @@ def _render_history(df: pd.DataFrame) -> None:
             "Category", ["All"] + sorted(df["category"].unique().tolist()), key="trans_cat_filter"
         )
     with f3:
+        date_range = st.date_input(
+            "Date range",
+            value=(min_date, max_date),
+            min_value=min_date, max_value=max_date,
+            key="trans_date_range",
+        )
+    with f4:
         search = st.text_input(
             "Search anything",
             placeholder="e.g. amazon, food, 50, expense",
@@ -391,7 +411,20 @@ def _render_history(df: pd.DataFrame) -> None:
             help="Matches description, category, type, or amount.",
         )
 
-    filtered = _apply_filters(df, type_filter, category_filter, search)
+    # st.date_input returns a single date mid-edit; only filter once both ends are picked.
+    start_date, end_date = (date_range if isinstance(date_range, (list, tuple))
+                            and len(date_range) == 2 else (min_date, max_date))
+    date_active = (start_date, end_date) != (min_date, max_date)
+
+    # One-click reset for every filter. Only shown when a filter is active
+    # so it doesn't clutter the default view.
+    if type_filter != "All" or category_filter != "All" or search or date_active:
+        if st.button("✖ Clear filters"):
+            for k in ("trans_type_filter", "trans_cat_filter", "trans_search", "trans_date_range"):
+                st.session_state.pop(k, None)
+            st.rerun()
+
+    filtered = _apply_filters(df, type_filter, category_filter, search, start_date, end_date)
 
     # Export-filtered-view button sits above the table so users can grab a
     # subset (e.g. "all Amazon Expenses last month") in one click.
@@ -407,13 +440,18 @@ def _render_history(df: pd.DataFrame) -> None:
         st.info("No transactions match your filters.")
         return
 
+    # Totals for the current filter so users don't have to add it up by hand.
+    totals = db.summarize(filtered)
     st.caption(
-        f"Showing **{len(filtered)}** transaction(s). "
+        f"Showing **{len(filtered)}** transaction(s) — "
+        f"income {db.format_money(totals['income'])}, "
+        f"expenses {db.format_money(totals['expense'])}, "
+        f"net {db.format_money(totals['net'])}. "
         "Click rows to select — hold ⌘/Ctrl or shift to pick multiple for bulk delete."
     )
 
     display = filtered[["id", "date", "type", "category", "amount", "description"]].copy()
-    display["amount"] = display["amount"].map(lambda v: db.format_money(v))
+    display["amount"] = display.apply(lambda r: signed_money(r["amount"], r["type"]), axis=1)
 
     selection = st.dataframe(
         display,
