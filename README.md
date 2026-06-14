@@ -49,9 +49,9 @@ You can also type `make` on its own to see all available commands.
 |---|---|
 | 📊 **Dashboard** | Charts of spending by category, income vs expenses over time, and key stats. |
 | 🎯 **Category Budgets** | Set spending limits per category with green/yellow/red progress bars. |
-| 💸 **Transactions** | Add, edit, delete, filter, and paginate through your transaction history. |
-| 📁 **CSV Import/Export** | Upload bank spreadsheets or download your data as CSV. |
-| 🏦 **Net Worth & Accounts** | Track assets (checking, savings, 401k, brokerage, real estate) and liabilities (credit cards, mortgages, loans). |
+| 💸 **Transactions** | Add, edit, delete, search, and filter by type, category, or date range. Income shows as `+`, expenses as `-`, with running totals for the current filter. |
+| 📁 **CSV Import/Export** | Upload bank spreadsheets or download your data as CSV. Uncategorised rows are auto-categorised from their description. |
+| 🏦 **Net Worth & Accounts** | Track assets (checking, savings, 401k, brokerage, real estate) and liabilities (credit cards, mortgages, loans), broken down into Total Assets / Total Liabilities / Net Worth. |
 | 💾 **Backup & Restore** | Download/restore your database file for safekeeping. Restores auto-save your prior data as `finance.db.bak`. |
 | 🧠 **AI Advisor** | Chat with an AI that knows your data. Includes 50/30/20 and compound interest calculators. |
 | 🛟 **Safe Deletes** | Removing transactions, accounts, or budgets always asks for confirmation first. |
@@ -61,7 +61,7 @@ You can also type `make` on its own to see all available commands.
 ## What You'll Need
 
 1. **Python 3.8+** — Check with `python --version`. Download from [python.org](https://www.python.org/downloads/) if needed.
-2. **A Gemini API Key** *(optional)* — Only for the AI chat feature. Get one free at [Google AI Studio](https://aistudio.google.com/app/apikey).
+2. **A Gemini API Key** *(optional)* — Only for the AI chat feature. Get one free at [Google AI Studio](https://aistudio.google.com/app/apikey). Either paste it into the sidebar at runtime, or add `GEMINI_API_KEY=your-key` to a `.env` file in the project root and the app will pick it up automatically on startup (the `.env` file is gitignored, so your key stays local).
 
 ---
 
@@ -89,12 +89,14 @@ The smart importer has been tested with exports from **Chase**, **Monzo**, **Nat
 | **Date** | `Date`, `Transaction Date`, `Post Date`, `Posting Date`, `Completed Date`, `Settled Date` |
 | **Amount** | `Amount`, `Value`, `Local Amount`, `Cost` — or split `Debit`/`Credit` or `Money Out`/`Money In` columns |
 | **Description** | `Description`, `Name`, `Payee`, `Memo`, `Narrative`, `Transaction Description` |
-| **Category** | `Category` (if missing, defaults to "Other") |
+| **Category** | `Category` (if missing, expenses are auto-categorised from their description — see below) |
 | **Type** | `Type`, `Transaction Type` (if missing, positive amounts = Income, negative = Expense) |
 
 > **How it works:** If your bank uses a single "Amount" column with negative numbers for purchases, the app treats negative = Expense and positive = Income. If your bank has separate "Debit" / "Credit" columns (like NatWest) or "Money Out" / "Money In" (like Barclays), those are used instead. CSVs without a header row (like Wells Fargo) are also detected and handled automatically.
 >
 > **Re-importing is safe:** rows that exactly match an existing transaction (same date, amount, type, and description) are skipped automatically, so you won't end up with duplicates if you upload an overlapping statement.
+>
+> **Auto-categorisation:** when your CSV has no `Category` column, the app guesses an expense category from each transaction's description (e.g. "TESCO" → Food, "Uber" → Transportation, "Netflix" → Entertainment). Anything it doesn't recognise falls back to "Other". You can tune the keyword list in `_CATEGORY_KEYWORDS` in `database.py`.
 
 ---
 
@@ -144,7 +146,9 @@ PersonalFinanceApp/
 │   └── advisor.py      # AI advisor and calculators
 └── tests/              # Automated tests
     ├── conftest.py     # Shared test setup
-    └── test_database.py
+    ├── test_database.py
+    ├── test_dashboard.py
+    └── test_views.py
 ```
 
 ---

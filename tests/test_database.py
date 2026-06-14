@@ -537,3 +537,54 @@ class TestCSVColumnMappingOverride:
         imported, _, _ = db.import_transactions_csv(csv, dayfirst=False)
         assert imported == 1
         assert db.get_all_transactions().iloc[0]['date'] == '2026-02-03'
+
+
+class TestAutoCategorize:
+    """Test description-based category guessing for CSV imports without a category column."""
+
+    def test_guess_known_keywords(self):
+        """Descriptions containing known keywords map to the right expense category."""
+        assert db.guess_category("TESCO STORES 1234") == "Food"
+        assert db.guess_category("Uber trip Friday") == "Transportation"
+        assert db.guess_category("NETFLIX.COM") == "Entertainment"
+        assert db.guess_category("Monthly rent to landlord") == "Housing"
+
+    def test_guess_is_case_insensitive(self):
+        """Matching ignores case."""
+        assert db.guess_category("netflix") == db.guess_category("NETFLIX") == "Entertainment"
+
+    def test_guess_unknown_returns_other(self):
+        """Descriptions with no keyword fall back to 'Other'."""
+        assert db.guess_category("mystery payee xyz") == "Other"
+        assert db.guess_category("") == "Other"
+        assert db.guess_category(None) == "Other"
+
+    def test_import_auto_categorizes_expenses(self):
+        """A category-less CSV gets expenses categorized from their descriptions.
+
+        Negative amounts (no type column) are treated as Expenses by the importer.
+        """
+        csv = (
+            "date,amount,description\n"
+            "2026-01-01,-12,STARBUCKS COFFEE\n"
+            "2026-01-02,-40,SHELL FUEL\n"
+            "2026-01-03,-9,unknown shop\n"
+        )
+        imported, _, errors = db.import_transactions_csv(csv)
+        assert imported == 3 and errors is None
+
+        df = db.get_all_transactions()
+        cat = lambda d: df[df['description'] == d].iloc[0]['category']
+        assert cat("STARBUCKS COFFEE") == "Food"
+        assert cat("SHELL FUEL") == "Transportation"
+        assert cat("unknown shop") == "Other"
+
+    def test_explicit_category_column_wins(self):
+        """When the CSV has a category column, it overrides the guess."""
+        csv = (
+            "date,amount,category,type,description\n"
+            "2026-01-01,12,Savings,Expense,STARBUCKS COFFEE\n"
+        )
+        imported, _, _ = db.import_transactions_csv(csv)
+        assert imported == 1
+        assert db.get_all_transactions().iloc[0]['category'] == "Savings"

@@ -64,10 +64,20 @@ def render_accounts():
 
     # --- View accounts and pick one to delete ---
     st.subheader("Current Asset Breakdown")
-    net_worth = db.get_net_worth()
-    st.metric("Total Tracked Net Worth", db.format_money(net_worth))
-
     df = db.get_all_accounts()
+
+    # Split into assets (positive balances) and liabilities (negative) so the
+    # net-worth number is broken down into "what you own" vs "what you owe".
+    # Liabilities are shown as a positive magnitude under their own label.
+    assets = float(df[df['balance'] > 0]['balance'].sum()) if not df.empty else 0.0
+    liabilities = abs(float(df[df['balance'] < 0]['balance'].sum())) if not df.empty else 0.0
+    net_worth = assets - liabilities
+
+    a1, a2, a3 = st.columns(3)
+    a1.metric("Total Assets", db.format_money(assets))
+    a2.metric("Total Liabilities", db.format_money(liabilities))
+    a3.metric("Net Worth", db.format_money(net_worth))
+
     if not df.empty:
         st.dataframe(df[['name', 'type', 'balance', 'last_updated']], use_container_width=True, hide_index=True)
 
