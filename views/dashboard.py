@@ -82,26 +82,60 @@ def _render_filters(df_trans: pd.DataFrame) -> pd.DataFrame:
             st.sidebar.warning("Please select both a start and end date.")
 
     mask = (df_trans['date'].dt.date >= start_date) & (df_trans['date'].dt.date <= end_date)
-    return df_trans.loc[mask]
+    return df_trans.loc[mask], filter_option
 
 
-def _render_metrics(filtered_df: pd.DataFrame, net_worth: float) -> None:
+def _last_month_rows(df_trans: pd.DataFrame) -> pd.DataFrame:
+    """Return only the transactions from last calendar month."""
+    last_month = (pd.Timestamp.today().to_period('M') - 1)
+    return df_trans[df_trans['date'].dt.to_period('M') == last_month]
+
+
+def _mom_deltas(df_trans: pd.DataFrame) -> dict:
+    """Build "vs last month" change strings for the headline numbers.
+
+    Returns formatted strings like "+$120.00" (and "+3.2 pts" for savings rate).
+    """
+    this_s = db.summarize(_current_month_rows(df_trans))
+    last_s = db.summarize(_last_month_rows(df_trans))
+
+    def money_delta(key):
+        diff = this_s[key] - last_s[key]
+        return f"{'+' if diff >= 0 else '-'}{db.format_money(abs(diff))}"
+
+    sr_diff = this_s['savings_rate'] - last_s['savings_rate']
+    return {
+        'income': money_delta('income'),
+        'expense': money_delta('expense'),
+        'net': money_delta('net'),
+        'savings_rate': f"{sr_diff:+.1f} pts",
+    }
+
+
+def _render_metrics(filtered_df: pd.DataFrame, net_worth: float, deltas: dict = None) -> None:
     """Render the row of five headline numbers (income, expenses, net, savings, net worth).
 
-    Safe to call with an empty dataframe — all per-period numbers fall back to zero.
+    Safe to call with an empty dataframe — numbers fall back to zero.
+    When `deltas` is given, each metric shows a "vs last month" change
+    (expenses use inverse colour because spending more is bad).
     """
     s = db.summarize(filtered_df)
     total_income = s['income']
     total_expense = s['expense']
     net_balance = s['net']
     savings_rate = s['savings_rate']
+    d = deltas or {}
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Total Income", db.format_money(total_income))
-    m2.metric("Total Expenses", db.format_money(total_expense))
-    m3.metric("Net Period Balance", db.format_money(net_balance))
-    m4.metric("Savings Rate", f"{savings_rate:.1f}%")
+    m1.metric("Total Income", db.format_money(total_income), delta=d.get('income'))
+    m2.metric("Total Expenses", db.format_money(total_expense),
+              delta=d.get('expense'), delta_color="inverse")
+    m3.metric("Net Period Balance", db.format_money(net_balance), delta=d.get('net'))
+    m4.metric("Savings Rate", f"{savings_rate:.1f}%", delta=d.get('savings_rate'))
     m5.metric("Total Net Worth", db.format_money(net_worth))
+
+    if deltas:
+        st.caption("Deltas compare this month to last month.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -314,9 +348,11 @@ def render_dashboard():
         return
 
     df_trans['date'] = pd.to_datetime(df_trans['date'])
-    filtered_df = _render_filters(df_trans)
+    filtered_df, filter_option = _render_filters(df_trans)
 
-    _render_metrics(filtered_df, net_worth)
+    # "vs last month" deltas only make sense when the view is scoped to this month.
+    deltas = _mom_deltas(df_trans) if filter_option == "This Month" else None
+    _render_metrics(filtered_df, net_worth, deltas)
 
     budgets_df = db.get_all_budgets()
     if not budgets_df.empty:

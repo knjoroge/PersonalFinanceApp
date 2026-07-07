@@ -78,6 +78,10 @@ def _render_api_key_sidebar() -> str:
             type="password",
             help="Stored only for this browser session — never written to disk."
         )
+        st.sidebar.caption(
+            "Don't have one? [Get a free key →](https://aistudio.google.com/apikey) "
+            "(sign in with Google, click *Create API key*, paste it here)."
+        )
         if entered:
             st.session_state.gemini_api_key = entered
             st.rerun()
@@ -183,6 +187,9 @@ def _render_chat_tab(api_key: str, finance_context: str) -> None:
 
     with st.expander("View Data sent to AI", expanded=False):
         st.text(finance_context)
+
+    if not api_key:
+        st.info("💡 Add your Gemini API key in the sidebar to enable chat.")
 
     if "messages" not in st.session_state:
         st.session_state.messages = [{

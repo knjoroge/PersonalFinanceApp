@@ -119,18 +119,22 @@ def _render_add_form() -> None:
                 t_amount = st.number_input(
                     f"Amount ({db.get_currency()})",
                     min_value=0.01, format="%.2f",
-                    value=float(prefill.get("amount", 0.01)),
+                    value=float(prefill["amount"]) if prefill.get("amount") else None,
+                    placeholder="0.00",
                 )
             with col2:
                 t_category = st.selectbox("Category", cats, index=cat_idx)
                 t_desc = st.text_input("Description (Optional)", value=prefill.get("desc", ""))
 
             if st.form_submit_button("Save Transaction", use_container_width=True):
-                db.add_transaction(t_date.strftime("%Y-%m-%d"), t_amount, t_category, t_type, t_desc)
-                st.toast("Successfully added transaction!", icon="✅")
-                st.session_state.pop("_prefill", None)  # clear so it doesn't stick
-                st.session_state["add_form_open"] = True  # keep open to add the next one
-                st.rerun()
+                if not t_amount:
+                    st.error("Please enter an amount.")
+                else:
+                    db.add_transaction(t_date.strftime("%Y-%m-%d"), t_amount, t_category, t_type, t_desc)
+                    st.toast("Successfully added transaction!", icon="✅")
+                    st.session_state.pop("_prefill", None)  # clear so it doesn't stick
+                    st.session_state["add_form_open"] = True  # keep open to add the next one
+                    st.rerun()
 
 
 def _show_import_result(imported: int, skipped: int, errors) -> None:
@@ -492,7 +496,15 @@ def render_transactions():
 
     df = db.get_all_transactions()
     if df.empty:
-        st.info("No transactions logged yet. Add your first one above!")
+        st.info(
+            "No transactions logged yet. Add your first one above — "
+            "or load a month of sample data to explore first."
+        )
+        if st.button("✨ Load demo data", key="demo_from_transactions"):
+            count = db.load_demo_data()
+            if count:
+                st.toast(f"Loaded {count} sample transactions + 3 accounts.", icon="✨")
+                st.rerun()
         return
 
     _render_history(df)

@@ -6,6 +6,17 @@ Track your spending, set budgets, monitor your net worth, and get AI-powered fin
 
 ---
 
+## Easiest Start (no terminal)
+
+Once you have the project folder and Python installed, just **double-click the launcher**:
+
+- **macOS:** double-click `run.command`
+- **Windows:** double-click `run.bat`
+
+The first run sets everything up (this takes a minute); after that it opens the app in your browser straight away.
+
+---
+
 ## Quick Start
 
 If you have Python 3.8+ and `make` installed, this is the fastest way to get running:
@@ -37,8 +48,8 @@ You can also type `make` on its own to see all available commands.
 - **Track every dollar** — Log income and expenses with categories and browse your full history.
 - **Set spending budgets** — Choose a monthly limit for any category and watch colour-coded progress bars.
 - **Import from your bank** — Upload a CSV from your bank to bulk-add transactions, or download your data.
-- **Monitor your net worth** — Enter balances for assets (bank accounts, retirement funds, investments) *and* liabilities (credit cards, mortgages, loans) for a true net-worth picture.
-- **Back up your data** — Download your entire database to keep a safe copy, and restore it any time.
+- **Monitor your net worth** — Enter balances for assets (bank accounts, retirement funds, investments) *and* liabilities (credit cards, mortgages, loans) for a true net-worth picture. Just pick "I own it" or "I owe it" — no negative numbers needed.
+- **Back up your data** — Download your entire database to keep a safe copy, and restore it any time. The app also saves a daily backup for you automatically.
 - **Get AI advice** — Ask an AI assistant (powered by Google Gemini) questions about your finances.
 
 ---
@@ -47,12 +58,12 @@ You can also type `make` on its own to see all available commands.
 
 | Feature | What It Does |
 |---|---|
-| 📊 **Dashboard** | Charts of spending by category, income vs expenses over time, and key stats. |
+| 📊 **Dashboard** | Charts of spending by category, income vs expenses over time, and key stats. Headline numbers show how this month compares to last month. |
 | 🎯 **Category Budgets** | Set spending limits per category with green/yellow/red progress bars. |
 | 💸 **Transactions** | Add, edit, delete, search, and filter by type, category, or date range. Income shows as `+`, expenses as `-`, with running totals for the current filter. |
 | 📁 **CSV Import/Export** | Upload bank spreadsheets or download your data as CSV. Uncategorised rows are auto-categorised from their description. |
 | 🏦 **Net Worth & Accounts** | Track assets (checking, savings, 401k, brokerage, real estate) and liabilities (credit cards, mortgages, loans), broken down into Total Assets / Total Liabilities / Net Worth. |
-| 💾 **Backup & Restore** | Download/restore your database file for safekeeping. Restores auto-save your prior data as `finance.db.bak`. |
+| 💾 **Backup & Restore** | Download/restore your database file for safekeeping. A daily copy is saved automatically as `finance.db.autobak`, and restores save your prior data as `finance.db.bak`. |
 | 🧠 **AI Advisor** | Chat with an AI that knows your data. Includes 50/30/20 and compound interest calculators. |
 | 🛟 **Safe Deletes** | Removing transactions, accounts, or budgets always asks for confirmation first. |
 
@@ -117,7 +128,7 @@ python -m pytest tests/ -v --cov=. --cov-report=term-missing
 
 ## Where Is My Data?
 
-Everything is stored in a **local file called `finance.db`** on your computer — nothing goes to the cloud (except AI questions, which go to Google Gemini if you use that feature).
+Everything is stored in a **local file called `finance.db`** on your computer — nothing goes to the cloud (except AI questions, which go to Google Gemini if you use that feature). The app also keeps a daily safety copy next to it called `finance.db.autobak`.
 
 Custom storage path:
 ```bash
@@ -132,6 +143,8 @@ FINANCE_DB_PATH=/path/to/custom.db streamlit run app.py
 PersonalFinanceApp/
 ├── app.py              # Starts the app and builds the sidebar navigation
 ├── database.py         # All data storage and retrieval
+├── run.command         # Double-click launcher (macOS)
+├── run.bat             # Double-click launcher (Windows)
 ├── Makefile            # One-command setup, run, and test
 ├── requirements.txt    # Python package dependencies
 ├── README.md           # This file
