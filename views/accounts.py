@@ -44,10 +44,17 @@ def render_accounts():
             a_name = st.text_input("Account Name (e.g. 'Fidelity 401k')")
             a_type = st.selectbox("Account Type", ACCOUNT_TYPES)
         with col2:
+            a_kind = st.radio(
+                "Is this something you own or owe?",
+                ["I own it (asset)", "I owe it (liability)"],
+                help="Assets are savings, investments, property. "
+                     "Liabilities are credit cards, loans, mortgages.",
+            )
             a_balance = st.number_input(
-                f"Current Balance ({db.get_currency()})",
-                value=0.00, format="%.2f",
-                help="Enter a negative value for liabilities (e.g. -2500 for a credit-card balance owed)."
+                f"Amount ({db.get_currency()})",
+                min_value=0.00, value=0.00, format="%.2f",
+                help="Just enter the amount as a positive number — "
+                     "the choice above handles owned vs owed.",
             )
 
         st.info("If this is a new account, it will be added. If the name already exists (case-insensitive), its balance will be updated.")
@@ -56,7 +63,9 @@ def render_accounts():
             if not a_name.strip():
                 st.error("Account name cannot be empty.")
             else:
-                db.add_or_update_account(a_name, a_type, a_balance)
+                # Liabilities are stored as negative balances so net worth = assets - liabilities.
+                signed_balance = -a_balance if a_kind.startswith("I owe") else a_balance
+                db.add_or_update_account(a_name, a_type, signed_balance)
                 st.toast(f"Successfully updated '{a_name}' balance!", icon="✅")
                 st.rerun()
 
@@ -94,6 +103,11 @@ def render_accounts():
                 _open_delete_account_dialog(int(sel_id), sel['name'], sel['type'], float(sel['balance']))
     else:
         st.info("You haven't added any accounts yet. Track your 401k, savings, and investments above!")
+        if st.button("✨ Load demo data", key="demo_from_accounts"):
+            count = db.load_demo_data()
+            if count:
+                st.toast(f"Loaded {count} sample transactions + 3 accounts.", icon="✨")
+                st.rerun()
 
     # --- Database backup & restore ---
     st.markdown("---")

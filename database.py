@@ -768,6 +768,31 @@ def import_database(db_bytes: bytes) -> Tuple[bool, str]:
         return False, f"Restore failed: {str(e)}"
 
 
+def auto_backup(max_age_hours: int = 24) -> Optional[str]:
+    """Save a safety copy of the database once a day (finance.db.autobak).
+
+    Returns the backup path if one was made, else None.
+    """
+    if not os.path.exists(DB_PATH):
+        return None
+
+    backup_path = DB_PATH + ".autobak"
+    # Already backed up recently? Skip.
+    if os.path.exists(backup_path):
+        age_hours = (datetime.now().timestamp() - os.path.getmtime(backup_path)) / 3600
+        if age_hours < max_age_hours:
+            return None
+
+    # Nothing to back up yet.
+    with _connect() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+    if count == 0:
+        return None
+
+    shutil.copy2(DB_PATH, backup_path)
+    return backup_path
+
+
 if __name__ == "__main__":
     init_db()
     print("Database initialized successfully.")

@@ -4,6 +4,17 @@ Welcome! This guide will walk you through setting up your finances in just a few
 
 ---
 
+## ▶️ Opening the App
+
+The easiest way — no typing:
+
+- **macOS:** double-click **`run.command`**
+- **Windows:** double-click **`run.bat`**
+
+The first time takes about a minute to set things up. After that it opens the app in your browser each time you double-click.
+
+---
+
 ## 🏦 Step 1: Add Your Accounts
 
 Start by telling the app about your bank accounts, retirement funds, investments, **and any debts** — all of these together make up your true net worth.
@@ -13,10 +24,9 @@ Start by telling the app about your bank accounts, retirement funds, investments
 3. Pick the account type:
     - **Assets**: Checking, Savings, 401k, Pension, Shares/Brokerage, Real Estate, Other Assets.
     - **Liabilities**: Credit Card, Mortgage, Loan, Other Liabilities.
-4. Enter the balance:
-    - For **assets**, enter a positive number (e.g. `4500`).
-    - For **liabilities**, enter a **negative** number representing what you owe (e.g. `-2500` for a credit-card balance). This way it correctly subtracts from your net worth.
-5. Click **Save Balance Update**.
+4. Choose **"I own it"** (an asset, like savings) or **"I owe it"** (a debt, like a credit card).
+5. Enter the amount as a normal positive number (e.g. `4500` or `2500`) — the choice above handles owned vs owed for you.
+6. Click **Save Balance Update**.
 
 Repeat for each account you want to track. You only need to update these once a month or so.
 
@@ -104,7 +114,7 @@ You can also set an overall **Monthly Expense Goal** to track total spending. Th
 
 Once you've added some data, the Dashboard comes to life:
 - **Filters** on the left let you view "This Month", "Last 90 Days", or a custom range.
-- See your **Savings Rate**, **Net Worth**, and **Income vs Expenses** at a glance.
+- See your **Savings Rate**, **Net Worth**, and **Income vs Expenses** at a glance. On "This Month" the numbers also show how you're doing **compared to last month**.
 - A pie chart shows where your money goes by category.
 - A trend chart shows how your spending changes over time.
 
@@ -119,7 +129,7 @@ Need advice? The AI Advisor has two tools:
 
 ### How to use the AI Chat
 
-To use the chat, you need a **Google Gemini API Key** (you can get one for free from [Google AI Studio](https://aistudio.google.com/app/apikey)).
+To use the chat, you need a **Google Gemini API Key** (free). The sidebar has a **"Get a free key →"** link that takes you straight to Google AI Studio — sign in, click *Create API key*, and paste it back into the app.
 
 **Where to enter the key:** On the AI Advisor page, paste it into the **🔑 Gemini API Key** box in the **left sidebar**. Once set, the sidebar will show a "Key set for this session" confirmation, with a **Clear Key** button if you want to remove it.
 
@@ -139,7 +149,7 @@ To use the chat, you need a **Google Gemini API Key** (you can get one for free 
 
 ## 💾 Step 6: Back Up Your Data
 
-Your data lives on your computer, not in the cloud. Keep a backup just in case!
+Your data lives on your computer, not in the cloud. The app already saves a **daily backup for you automatically** (a file called `finance.db.autobak`), but it's still smart to keep your own copy somewhere safe:
 
 1. Go to **Net Worth & Accounts**.
 2. Scroll to **💾 Database Backup & Restore**.

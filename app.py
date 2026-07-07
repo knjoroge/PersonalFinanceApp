@@ -9,7 +9,7 @@ Transactions, Net Worth & Accounts, and AI Advisor).
 
 import streamlit as st
 from dotenv import load_dotenv
-from database import init_db
+from database import init_db, auto_backup
 
 # Load variables from a local .env file (e.g. GEMINI_API_KEY) into the
 # environment so the AI Advisor can pick the key up without manual entry.
@@ -28,6 +28,10 @@ st.set_page_config(
 # Make sure the database tables exist before anything else runs.
 # If the database file doesn't exist yet, this creates it automatically.
 init_db()
+
+# Save a safety copy of the database once a day, in case the user never
+# downloads a manual backup.
+auto_backup()
 
 
 def main():
