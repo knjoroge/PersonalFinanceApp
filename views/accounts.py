@@ -1,15 +1,14 @@
 """
-accounts.py — Track account balances, net worth, and database backups.
+accounts.py — Track account balances and net worth.
 
-Add or update bank accounts, retirement funds, and investments.
-Download or restore database backups from this page.
+Add or update bank accounts, retirement funds, investments and debts.
 """
 
 import streamlit as st
+import pandas as pd
 import database as db
 from database import ACCOUNT_TYPES, LIABILITY_TYPES
-from views._shared import confirm_delete_dialog
-import os
+from views._shared import confirm_delete_dialog, sample_data_button
 
 
 def _open_delete_account_dialog(account_id, name, account_type, balance):
@@ -31,9 +30,9 @@ def render_accounts():
 
     st.header("🏦 Net Worth & Accounts")
     st.markdown(
-        "Track assets (savings, investments, property) and liabilities "
-        "(credit cards, mortgages, loans) to get a true net-worth picture. "
-        "Updating an account simply overrides its previous balance."
+        "Add what you **own** (savings, investments, property) and what you **owe** "
+        "(credit cards, mortgages, loans). Your **net worth** is what you own minus what you owe. "
+        "Once a month or so, update each account with its latest balance."
     )
 
     # --- Add or update an account ---
@@ -87,7 +86,7 @@ def render_accounts():
     st.markdown("---")
 
     # --- View accounts and pick one to delete ---
-    st.subheader("Current Asset Breakdown")
+    st.subheader("Your accounts")
 
     # Split into assets (positive balances) and liabilities (negative) so the
     # net-worth number is broken down into "what you own" vs "what you owe".
@@ -97,58 +96,29 @@ def render_accounts():
     net_worth = assets - liabilities
 
     a1, a2, a3 = st.columns(3)
-    a1.metric("Total Assets", db.format_money(assets))
-    a2.metric("Total Liabilities", db.format_money(liabilities))
-    a3.metric("Net Worth", db.format_money(net_worth))
+    a1.metric("What you own", db.format_money(assets))
+    a2.metric("What you owe", db.format_money(liabilities))
+    a3.metric("Net worth", db.format_money(net_worth), help="What you own minus what you owe.")
 
     if not df.empty:
-        st.dataframe(df[['name', 'type', 'balance', 'last_updated']], use_container_width=True, hide_index=True)
+        table = df[['name', 'type', 'balance', 'last_updated']].copy()
+        table['balance'] = table['balance'].map(db.format_money)
+        table['last_updated'] = pd.to_datetime(table['last_updated']).dt.strftime('%d %b %Y')
+        table.columns = ['Account', 'Type', 'Balance', 'Last updated']
+        st.dataframe(table, use_container_width=True, hide_index=True)
 
-        st.markdown("### Delete Account")
+        st.markdown("### Delete an account")
         d1, d2 = st.columns([3, 1])
         with d1:
             options = {f"{r['name']} ({r['type']})": r['id'] for _, r in df.iterrows()}
-            label = st.selectbox("Select Account", list(options.keys()))
+            label = st.selectbox("Which account?", list(options.keys()), key="delete_account_choice")
         with d2:
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Delete Selected", type="primary"):
+            if st.button("Delete", type="primary"):
                 sel_id = options[label]
                 sel = df[df['id'] == sel_id].iloc[0]
                 _open_delete_account_dialog(int(sel_id), sel['name'], sel['type'], float(sel['balance']))
     else:
-        st.info("You haven't added any accounts yet. Track your 401k, savings, and investments above!")
-        if st.button("✨ Load demo data", key="demo_from_accounts"):
-            count = db.load_demo_data()
-            if count:
-                st.toast(f"Loaded {count} sample transactions + 3 accounts.", icon="✨")
-                st.rerun()
-
-    # --- Database backup & restore ---
-    st.markdown("---")
-    st.subheader("💾 Database Backup & Restore")
-
-    backup_col, restore_col = st.columns(2)
-
-    with backup_col:
-        st.markdown("#### Download Backup")
-        st.caption("Download your entire database file for safekeeping.")
-        if os.path.exists(db.DB_PATH):
-            st.download_button("⬇️ Download Database Backup", data=db.export_database(),
-                               file_name="finance_backup.db", mime="application/octet-stream",
-                               use_container_width=True)
-        else:
-            st.info("No database file found.")
-
-    with restore_col:
-        st.markdown("#### Restore from Backup")
-        st.caption("Upload a previously downloaded backup to restore your data. "
-                   "Your current data is saved as finance.db.bak before being replaced.")
-        uploaded_db = st.file_uploader("Upload .db file", type=["db"],
-                                       help="Upload a finance.db backup file to restore your data.")
-        if uploaded_db is not None and st.button("🔄 Restore Database", type="primary", use_container_width=True):
-            success, message = db.import_database(uploaded_db.getvalue())
-            if success:
-                st.toast(message, icon="✅")
-                st.rerun()
-            else:
-                st.error(message)
+        st.info("You haven't added any accounts yet. Add your first one above.")
+        if db.get_all_transactions().empty:
+            sample_data_button(key="sample_from_accounts")

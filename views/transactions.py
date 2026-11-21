@@ -10,7 +10,7 @@ import pandas as pd
 from datetime import datetime
 import database as db
 from database import INCOME_CATEGORIES, EXPENSE_CATEGORIES
-from views._shared import confirm_delete_dialog, signed_money
+from views._shared import confirm_delete_dialog, signed_money, sample_data_button
 
 
 def _open_delete_transaction_dialog(tid, t_date, t_category, t_amount, t_type):
@@ -25,15 +25,13 @@ def _open_delete_transaction_dialog(tid, t_date, t_category, t_amount, t_type):
     )
 
 
-@st.dialog("Edit Transaction")
+@st.dialog("Change transaction")
 def edit_transaction_dialog(tid, cur_date, cur_amount, cur_category, cur_type, cur_desc):
     """Pop-up form for editing an existing transaction.
 
     The Type selector sits outside the form so changing it instantly
     refreshes the matching Category list (Income vs Expense categories).
     """
-    st.write(f"Editing Transaction #{tid}")
-
     # Type lives outside the form so the category list reacts to it live.
     new_type = st.radio(
         "Type", ["Income", "Expense"],
@@ -57,12 +55,15 @@ def edit_transaction_dialog(tid, cur_date, cur_amount, cur_category, cur_type, c
             new_category = st.selectbox("Category", cats, index=cat_idx, key=f"edit_cat_{tid}")
             new_desc = st.text_input("Description (Optional)", value=cur_desc or "", key=f"edit_desc_{tid}")
 
-        if st.form_submit_button("Save Changes"):
+        if st.form_submit_button("Save changes"):
             db.update_transaction(tid, new_date.strftime("%Y-%m-%d"), new_amount,
                                   new_category, new_type, new_desc)
-            st.toast("Transaction updated!", icon="✏️")
+            st.toast("Changes saved!", icon="✏️")
             st.rerun()
 
+
+# Shown in the column dropdowns when the file doesn't have that kind of column.
+_NOT_IN_FILE = "(not in my file)"
 
 # Quick-add presets — one-click prefills for transactions the user enters often.
 # Each tuple is (label, type, category, amount, default description).
@@ -85,13 +86,11 @@ def _render_add_form() -> None:
     The Type radio is outside the form so the Category list re-filters live
     when the user flips between Income and Expense.
     """
-    # Keep the form expanded once the user starts using it (after a quick-add or
-    # a save) so logging several transactions in a row doesn't re-collapse it
-    # every time.
-    with st.expander("➕ Add New Transaction",
-                     expanded=st.session_state.get("add_form_open", False)):
+    # Open by default: adding a transaction is the main thing people do here.
+    with st.expander("➕ Add a transaction",
+                     expanded=st.session_state.get("add_form_open", True)):
         # --- One-click prefill buttons ---
-        st.caption("Quick-add common transactions:")
+        st.caption("Shortcuts: click one to fill in the form, then change anything before saving.")
         cols = st.columns(len(_QUICK_ADD_PRESETS))
         for col, (label, p_type, p_cat, p_amt, p_desc) in zip(cols, _QUICK_ADD_PRESETS):
             if col.button(label, use_container_width=True, key=f"quick_{label}"):
@@ -126,12 +125,12 @@ def _render_add_form() -> None:
                 t_category = st.selectbox("Category", cats, index=cat_idx)
                 t_desc = st.text_input("Description (Optional)", value=prefill.get("desc", ""))
 
-            if st.form_submit_button("Save Transaction", use_container_width=True):
+            if st.form_submit_button("Save", use_container_width=True):
                 if not t_amount:
                     st.error("Please enter an amount.")
                 else:
                     db.add_transaction(t_date.strftime("%Y-%m-%d"), t_amount, t_category, t_type, t_desc)
-                    st.toast("Successfully added transaction!", icon="✅")
+                    st.toast("Saved!", icon="✅")
                     st.session_state.pop("_prefill", None)  # clear so it doesn't stick
                     st.session_state["add_form_open"] = True  # keep open to add the next one
                     st.rerun()
@@ -144,22 +143,51 @@ def _show_import_result(imported: int, skipped: int, errors) -> None:
     share the same toast/info/warning behaviour.
     """
     if imported > 0:
-        st.toast(f"Successfully imported {imported} transactions!", icon="✅")
+        st.toast(f"Imported {imported} transactions!", icon="✅")
     if skipped > 0:
-        st.info(f"Skipped {skipped} duplicate row(s) that already exist in your data.")
+        st.info(f"Skipped {skipped} transaction(s) you'd already imported before.")
 
     if errors:
         error_lines = [e.strip() for e in errors.split(";") if e.strip()]
-        st.warning(f"⚠️ {len(error_lines)} row(s) couldn't be imported.")
-        with st.expander("Show details"):
+        st.warning(f"⚠️ {len(error_lines)} line(s) in the file couldn't be read, so they were left out.")
+        with st.expander("Show which ones"):
             for line in error_lines:
                 st.markdown(f"- {line}")
 
     if imported == 0 and skipped == 0 and not errors:
-        st.info("No new transactions were found in this file.")
+        st.info("Nothing new in this file. Everything in it is already in the app.")
 
     if imported > 0:
         st.rerun()
+
+
+def _ask_date_order(content, date_column, key: str) -> bool:
+    """Return True if the file's dates are day-first (31/12), False if month-first (12/31).
+
+    Usually the file itself settles it (a date like 31/12 can only be day-first),
+    so nothing is shown. Only if every date could be read either way do we ask,
+    using a real date from the user's file as the example.
+    """
+    dayfirst, example = db.guess_date_order_for_column(content, date_column)
+    if dayfirst is not None:
+        return dayfirst
+
+    options = ["Day first, like 31/12/2026 (UK and most countries)",
+               "Month first, like 12/31/2026 (US)"]
+    question = "How are the dates written in your file?"
+    if example:
+        try:
+            d1 = pd.to_datetime(example, dayfirst=True)
+            d2 = pd.to_datetime(example, dayfirst=False)
+            options = [f"{d1.day} {d1:%B %Y} (day first, UK style)",
+                       f"{d2:%B} {d2.day}, {d2.year} (month first, US style)"]
+            question = f"Your file has dates like **{example}**. Which date is that?"
+        except (ValueError, TypeError):
+            pass
+    # Best first guess: US users usually pick "$".
+    default = 1 if db.get_currency() == "$" else 0
+    choice = st.radio(question, options, index=default, key=key)
+    return choice == options[0]
 
 
 def _render_mapping_ui(content: str, analysis: dict) -> None:
@@ -174,25 +202,24 @@ def _render_mapping_ui(content: str, analysis: dict) -> None:
     then commit the import with the chosen mapping.
     """
     st.warning(
-        "We couldn't automatically figure out this file's layout. "
-        "Tell us which columns mean what, then click **Confirm Import**."
+        "We don't recognise this bank's file yet. "
+        "Tell us which column is which below, then click **Import**."
     )
 
     # --- Saved presets (recall a previously-named mapping) ---
     presets = db.list_csv_mapping_presets()
-    preset_choice = "(start fresh)"
+    preset_choice = "(none)"
     if presets:
         preset_choice = st.selectbox(
-            "Saved mapping preset",
-            ["(start fresh)"] + presets,
-            help="Reapply a mapping you saved from a previous import.",
+            "Use a bank layout you saved before?",
+            ["(none)"] + presets,
         )
-    preset_data = db.get_csv_mapping_preset(preset_choice) if preset_choice != "(start fresh)" else None
+    preset_data = db.get_csv_mapping_preset(preset_choice) if preset_choice != "(none)" else None
 
-    st.markdown("**Preview** (first 5 rows of your file)")
+    st.markdown("**Here are the first 5 lines of your file:**")
     st.dataframe(analysis['preview'], use_container_width=True, hide_index=True)
 
-    available = ["(none)"] + analysis['columns']
+    available = [_NOT_IN_FILE] + analysis['columns']
     auto = analysis['autodetected']
     # If the user chose a preset, its mapping wins over auto-detect.
     starting = {**auto, **(preset_data["mapping"] if preset_data else {})}
@@ -201,53 +228,49 @@ def _render_mapping_ui(content: str, analysis: dict) -> None:
         # Pick the pre-selected option in the dropdown.
         return available.index(col) if col in available else 0
 
-    st.markdown("**Map your columns**")
+    st.markdown("**Which column is which?**")
     m1, m2 = st.columns(2)
     with m1:
-        map_date = st.selectbox("Date column", available, index=_idx(starting.get('date')))
+        map_date = st.selectbox("Date", available, index=_idx(starting.get('date')))
         map_amount = st.selectbox(
-            "Amount column (single column with +/- values)",
-            available, index=_idx(starting.get('amount')),
+            "Amount", available, index=_idx(starting.get('amount')),
+            help="Pick this if your bank puts money in and money out in one column, "
+                 "with a minus sign for spending.",
         )
         map_debit = st.selectbox(
-            "Debit / Money Out (optional — use only if no single Amount column)",
+            "Money out (only if your bank uses two separate columns)",
             available, index=_idx(starting.get('debit')),
         )
         map_credit = st.selectbox(
-            "Credit / Money In (optional — use only if no single Amount column)",
+            "Money in (only if your bank uses two separate columns)",
             available, index=_idx(starting.get('credit')),
         )
     with m2:
-        map_desc = st.selectbox("Description column (optional)", available, index=_idx(starting.get('desc')))
-        map_cat = st.selectbox("Category column (optional)", available, index=_idx(starting.get('cat')))
+        map_desc = st.selectbox("Description (optional)", available, index=_idx(starting.get('desc')))
+        map_cat = st.selectbox("Category (optional)", available, index=_idx(starting.get('cat')))
         map_type = st.selectbox(
-            "Type column (optional — \"Income\" / \"Expense\")",
+            "Says \"Income\" or \"Expense\" (optional)",
             available, index=_idx(starting.get('type')),
         )
 
-    default_dayfirst = preset_data["dayfirst"] if preset_data else True
-    date_mode = st.radio(
-        "Date format",
-        ["DD-first (UK: 31/12/2026)", "MM-first (US: 12/31/2026)"],
-        index=0 if default_dayfirst else 1,
-        horizontal=True,
-        help="If your dates look wrong after import (e.g. swapped day/month), switch this and re-import.",
-    )
-    dayfirst = date_mode.startswith("DD-first")
+    if preset_data:
+        dayfirst = preset_data["dayfirst"]
+    else:
+        dayfirst = _ask_date_order(content, None if map_date == _NOT_IN_FILE else map_date, key="map_dayfirst")
 
-    # --- Save this mapping as a named preset for next time ---
-    with st.expander("💾 Save this mapping for next time", expanded=False):
+    # --- Remember this layout for next time ---
+    with st.expander("💾 Remember this layout for next month", expanded=False):
         preset_name = st.text_input(
-            "Preset name (e.g. 'MyBank')",
-            help="Saves under this name so you can pick it from the dropdown above when importing the next statement.",
+            "Give it a name, for example your bank's name",
+            help="Next time you import from this bank, pick this name at the top and everything fills in.",
         )
 
     c1, c2 = st.columns([3, 1])
 
     # Build the mapping dict from the dropdown choices.
     def _val(x):
-        # Turn "(none)" back into a real None so the importer treats it as missing.
-        return None if x == "(none)" else x
+        # Turn "(not in my file)" back into a real None so the importer treats it as missing.
+        return None if x == _NOT_IN_FILE else x
     mapping = {
         'date':   _val(map_date),
         'amount': _val(map_amount),
@@ -257,18 +280,18 @@ def _render_mapping_ui(content: str, analysis: dict) -> None:
         'cat':    _val(map_cat),
         'type':   _val(map_type),
     }
-    if c1.button("✅ Confirm Import", type="primary", use_container_width=True):
+    if c1.button("✅ Import", type="primary", use_container_width=True):
         if preset_name.strip():
             db.save_csv_mapping_preset(preset_name.strip(), mapping, dayfirst=dayfirst)
-            st.toast(f"Saved preset '{preset_name.strip()}'.", icon="💾")
+            st.toast(f"Saved the '{preset_name.strip()}' layout.", icon="💾")
         imported, skipped, errors = db.import_transactions_csv(
             content, column_mapping=mapping, dayfirst=dayfirst,
         )
         _show_import_result(imported, skipped, errors)
     # Quick delete for unwanted presets.
-    if preset_data and c2.button("🗑️ Delete preset", use_container_width=True):
+    if preset_data and c2.button("🗑️ Forget this layout", use_container_width=True):
         db.delete_csv_mapping_preset(preset_choice)
-        st.toast(f"Removed preset '{preset_choice}'.", icon="🗑️")
+        st.toast(f"Forgot the '{preset_choice}' layout.", icon="🗑️")
         st.rerun()
 
 
@@ -281,27 +304,25 @@ def _render_csv_section() -> None:
       3. If yes → big "Import" button (one click — fast path for known banks).
       4. If no → render the column-mapping form so the user can guide us.
     """
-    with st.expander("📁 Import / Export CSV", expanded=False):
+    with st.expander("📁 Import from your bank, or download your transactions", expanded=False):
         col_imp, col_exp = st.columns(2)
 
         with col_exp:
-            st.markdown("#### Export Transactions")
+            st.markdown("#### Download your transactions")
+            st.caption("Saves a spreadsheet file (CSV) you can open in Excel or Google Sheets.")
             csv_data = db.export_transactions_csv()
             if csv_data:
-                st.download_button("⬇️ Download CSV", data=csv_data,
+                st.download_button("⬇️ Download", data=csv_data,
                                    file_name=f"transactions_{datetime.today().strftime('%Y%m%d')}.csv",
                                    mime="text/csv", use_container_width=True)
             else:
-                st.info("No transactions to export.")
+                st.info("Nothing to download yet.")
 
         with col_imp:
-            st.markdown("#### Import Transactions")
-            uploaded = st.file_uploader(
-                "Upload a CSV file", type=["csv"],
-                help="Upload your bank's CSV export. Common formats (Chase, Monzo, NatWest, DCU, etc.) "
-                     "import in one click. Unknown formats will prompt for column mapping. "
-                     "Duplicates are skipped automatically."
-            )
+            st.markdown("#### Import from your bank")
+            st.caption("On your bank's website, download a statement as a **CSV** file, then choose it here. "
+                       "Transactions you've already imported are skipped, so it's safe to import again.")
+            uploaded = st.file_uploader("Choose your bank file", type=["csv"])
             if uploaded is None:
                 return
 
@@ -314,18 +335,10 @@ def _render_csv_section() -> None:
 
             if not analysis['missing']:
                 # All required fields recognised — show the simple one-click path.
-                st.success("✅ Format recognised automatically.")
-                with st.expander("Preview (first 5 rows)"):
+                st.success("✅ We recognise this file. It's ready to import.")
+                with st.expander("Peek at the first 5 lines"):
                     st.dataframe(analysis['preview'], use_container_width=True, hide_index=True)
-                # Date-format selector is offered here too so users can fix
-                # US-style MM/DD dates without forcing the whole mapper UI to appear.
-                date_mode = st.radio(
-                    "Date format",
-                    ["DD-first (UK: 31/12/2026)", "MM-first (US: 12/31/2026)"],
-                    horizontal=True, key="auto_dayfirst",
-                    help="Default is DD-first (UK style). Switch to MM-first if your dates look wrong after import.",
-                )
-                dayfirst = date_mode.startswith("DD-first")
+                dayfirst = _ask_date_order(content, analysis['autodetected'].get('date'), key="auto_dayfirst")
                 if st.button("📥 Import", use_container_width=True):
                     imported, skipped, errors = db.import_transactions_csv(content, dayfirst=dayfirst)
                     _show_import_result(imported, skipped, errors)
@@ -388,12 +401,13 @@ def _render_history(df: pd.DataFrame) -> None:
       * Single-row selection enables Edit + Delete on that row.
       * Multi-row selection enables Bulk Delete and "Export filtered as CSV".
     """
-    st.subheader("Transaction History")
+    st.subheader("Your transactions")
 
     # Default date range spans all transactions; users can narrow it.
     all_dates = pd.to_datetime(df["date"])
     min_date, max_date = all_dates.min().date(), all_dates.max().date()
 
+    st.markdown("Find a transaction:")
     f1, f2, f3, f4 = st.columns([1, 1, 2, 2])
     with f1:
         type_filter = st.selectbox("Type", ["All", "Income", "Expense"], key="trans_type_filter")
@@ -410,8 +424,8 @@ def _render_history(df: pd.DataFrame) -> None:
         )
     with f4:
         search = st.text_input(
-            "Search anything",
-            placeholder="e.g. amazon, food, 50, expense",
+            "Search",
+            placeholder="e.g. amazon, food, 50",
             key="trans_search",
             help="Matches description, category, type, or amount.",
         )
@@ -424,7 +438,7 @@ def _render_history(df: pd.DataFrame) -> None:
     # One-click reset for every filter. Only shown when a filter is active
     # so it doesn't clutter the default view.
     if type_filter != "All" or category_filter != "All" or search or date_active:
-        if st.button("✖ Clear filters"):
+        if st.button("✖ Show everything again"):
             for k in ("trans_type_filter", "trans_cat_filter", "trans_search", "trans_date_range"):
                 st.session_state.pop(k, None)
             st.rerun()
@@ -435,28 +449,31 @@ def _render_history(df: pd.DataFrame) -> None:
     # subset (e.g. "all Amazon Expenses last month") in one click.
     if not filtered.empty:
         st.download_button(
-            "⬇️ Export filtered view (CSV)",
+            "⬇️ Download the transactions shown",
             data=filtered.to_csv(index=False),
             file_name=f"transactions_filtered_{datetime.today().strftime('%Y%m%d')}.csv",
             mime="text/csv",
         )
 
     if filtered.empty:
-        st.info("No transactions match your filters.")
+        st.info("No transactions match. Try a different search or date range.")
         return
 
     # Totals for the current filter so users don't have to add it up by hand.
     totals = db.summarize(filtered)
     st.caption(
-        f"Showing **{len(filtered)}** transaction(s) — "
-        f"income {db.format_money(totals['income'])}, "
-        f"expenses {db.format_money(totals['expense'])}, "
-        f"net {db.format_money(totals['net'])}. "
-        "Click rows to select — hold ⌘/Ctrl or shift to pick multiple for bulk delete."
+        f"Showing **{len(filtered)}** transaction(s): "
+        f"money in {db.format_money(totals['income'])}, "
+        f"money out {db.format_money(totals['expense'])}, "
+        f"left over {db.format_money(totals['net'])}."
     )
+    st.caption("☑️ Tick the box at the start of a row to change or delete it. "
+               "Tick several to delete them or change their category all at once.")
 
-    display = filtered[["id", "date", "type", "category", "amount", "description"]].copy()
+    display = filtered[["date", "type", "category", "amount", "description"]].copy()
+    display["date"] = pd.to_datetime(display["date"]).dt.strftime("%d %b %Y")
     display["amount"] = display.apply(lambda r: signed_money(r["amount"], r["type"]), axis=1)
+    display.columns = ["Date", "Type", "Category", "Amount", "Description"]
 
     selection = st.dataframe(
         display,
@@ -464,7 +481,6 @@ def _render_history(df: pd.DataFrame) -> None:
         hide_index=True,
         on_select="rerun",
         selection_mode="multi-row",
-        column_config={"id": st.column_config.NumberColumn("ID", width="small")},
         key="trans_table",
     )
 
@@ -475,15 +491,37 @@ def _render_history(df: pd.DataFrame) -> None:
     selected_ids = [int(filtered.iloc[i]["id"]) for i in selected_rows]
     a1, a2, a3, _ = st.columns([1, 1, 1, 3])
     # Edit only makes sense for exactly one row.
-    if len(selected_rows) == 1 and a1.button("✏️ Edit selected", use_container_width=True):
+    if len(selected_rows) == 1 and a1.button("✏️ Change", use_container_width=True):
         row = filtered.iloc[selected_rows[0]]
         edit_transaction_dialog(row["id"], row["date"], row["amount"],
                                 row["category"], row["type"], row["description"])
     if len(selected_rows) == 1 and a2.button("🗑️ Delete", use_container_width=True):
         row = filtered.iloc[selected_rows[0]]
         _open_delete_transaction_dialog(row["id"], row["date"], row["category"], row["amount"], row["type"])
-    if len(selected_rows) > 1 and a3.button(f"🗑️ Delete {len(selected_rows)} rows", use_container_width=True):
+    if len(selected_rows) > 1 and a3.button(f"🗑️ Delete {len(selected_rows)}", use_container_width=True):
         _open_bulk_delete_dialog(selected_ids)
+    if len(selected_rows) > 1:
+        _render_bulk_category(filtered.iloc[selected_rows], selected_ids)
+
+
+def _render_bulk_category(selected: pd.DataFrame, selected_ids: list) -> None:
+    """Change the category of several selected transactions in one go."""
+    types = selected["type"].unique().tolist()
+    if len(types) != 1:
+        st.caption("To change the category of several transactions at once, "
+                   "tick only money in (Income) or only money out (Expense), not both.")
+        return
+    cats = INCOME_CATEGORIES if types[0] == "Income" else EXPENSE_CATEGORIES
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        new_cat = st.selectbox(f"New category for the {len(selected_ids)} ticked transactions",
+                               cats, key="bulk_category")
+    with c2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Change category", use_container_width=True, key="bulk_category_btn"):
+            db.set_category(selected_ids, new_cat)
+            st.toast(f"Moved {len(selected_ids)} transactions to {new_cat}.", icon="🏷️")
+            st.rerun()
 
 
 def render_transactions():
@@ -497,15 +535,8 @@ def render_transactions():
 
     df = db.get_all_transactions()
     if df.empty:
-        st.info(
-            "No transactions logged yet. Add your first one above — "
-            "or load a month of sample data to explore first."
-        )
-        if st.button("✨ Load demo data", key="demo_from_transactions"):
-            count = db.load_demo_data()
-            if count:
-                st.toast(f"Loaded {count} sample transactions + 3 accounts.", icon="✨")
-                st.rerun()
+        st.info("No transactions yet. Add your first one above, or import a file from your bank.")
+        sample_data_button(key="sample_from_transactions")
         return
 
     _render_history(df)

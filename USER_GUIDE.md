@@ -1,164 +1,163 @@
 # 🚀 Getting Started with Personal Finance Manager
 
-Welcome! This guide will walk you through setting up your finances in just a few minutes.
+Welcome! This guide walks you through setting up your finances in a few minutes.
 
 ---
 
 ## ▶️ Opening the App
 
-The easiest way — no typing:
+The easiest way, with no typing:
 
-- **macOS:** double-click **`run.command`**
+- **Mac:** double-click **`run.command`**
 - **Windows:** double-click **`run.bat`**
 
-You need **Python 3.11 or newer** installed first. Get it free from [python.org](https://www.python.org/downloads/) (on Windows, tick **"Add python.exe to PATH"** during install). If Python is missing or too old, the launcher tells you what to do instead of failing silently.
+You need **Python 3.11 or newer** installed first. Get it free from [python.org](https://www.python.org/downloads/). On Windows, tick **"Add python.exe to PATH"** while installing. If Python is missing or too old, the launcher tells you what to do.
 
-The first time takes about a minute to set things up. After that it opens the app in your browser each time you double-click.
+The first time takes about a minute to set things up. After that, double-clicking opens the app in your web browser straight away. Keep the small black window open while you use the app. Closing it stops the app.
+
+> 💡 **Just want to look around first?** On an empty app, click **✨ Show me with sample data**. It fills the app with made-up examples. When you're ready for your own, click **🧹 Remove sample data** at the top of any page. Anything you added yourself stays.
 
 ---
 
 ## 🏦 Step 1: Add Your Accounts
 
-Start by telling the app about your bank accounts, retirement funds, investments, **and any debts** — all of these together make up your true net worth.
+Tell the app about your bank accounts, savings, pensions, investments **and any debts**. Together they make up your **net worth**: what you own minus what you owe.
 
-1. Click **Net Worth & Accounts** in the sidebar.
-2. Leave **Which account?** on **➕ Add a new account** and type a name (e.g. "Chase Checking", "Fidelity 401k", "Amex Card").
+1. Click **Net Worth & Accounts** on the left.
+2. Leave **Which account?** on **➕ Add a new account** and type a name (for example "Chase Checking", "Pension", or "Amex Card").
 3. Pick the account type. This tells the app whether it's something you own or owe:
-    - **Assets** (you own): Checking, Savings, 401k, Pension, Shares/Brokerage, Real Estate, Other Assets.
-    - **Liabilities** (you owe): Credit Card, Mortgage, Loan, Other Liabilities.
-4. Enter the balance as a normal positive number (e.g. `4500`), even for debts.
+    - **You own it:** Checking, Savings, 401k, Pension, Shares/Brokerage, Real Estate, Other Assets.
+    - **You owe it:** Credit Card, Mortgage, Loan, Other Liabilities.
+4. Type the balance as a normal number (for example `4500`), even for debts.
 5. Click **Add Account**.
 
-Repeat for each account you want to track. You only need to update these once a month or so: pick the account from **Which account?**, type the new balance, and click **Save New Balance**.
+Once a month or so, update each one: pick it from **Which account?**, type the new balance, and click **Save New Balance**.
 
-The page shows three headline numbers — **Total Assets**, **Total Liabilities**, and **Net Worth** — so you can see what you own and what you owe at a glance. (Liabilities are displayed as a positive amount under their own label; Net Worth is assets minus liabilities.)
+The page shows **What you own**, **What you owe**, and your **Net worth**.
 
 ---
 
 ## 📝 Step 2: Add Your Transactions
 
-Now let's start tracking where your money goes.
+A transaction is any money coming in (like your pay) or going out (like rent or shopping).
 
-1. Click **Transactions** in the sidebar.
-2. Open the **➕ Add New Transaction** section.
-3. Fill in the date, amount, type (Income or Expense), category, and an optional description.
-4. Click **Save Transaction**. The form stays open so you can quickly add another.
+1. Click **Transactions** on the left.
+2. Fill in the **➕ Add a transaction** form: whether it's Income or Expense, the date, the amount, a category, and a note if you like.
+3. Click **Save**. The form stays open so you can add the next one.
 
-> 💡 Use the **Quick-add** buttons at the top of the form (Salary, Rent, Coffee, etc.) to pre-fill common transactions in one click, then tweak before saving.
+> 💡 The **shortcut buttons** at the top of the form (Salary, Rent, Coffee and so on) fill the form in for you. Change anything you need, then click Save.
 
-### 🔎 Browsing your history
+### 🔎 Finding and fixing transactions
 
-Below the add form, your full transaction history is searchable and filterable:
-- Filter by **Type**, **Category**, or a **Date range**, and use the **search box** to match any description, category, type, or amount.
-- Income shows with a `+` and expenses with a `-`, and a caption shows the **income / expenses / net totals** for whatever you've filtered to.
-- A **✖ Clear filters** button appears when any filter is active.
-- Click rows to select them — one row enables **Edit / Delete**, multiple rows enable **bulk delete** and exporting just the filtered view.
+Under the form you'll find all your transactions:
+- Narrow them down by **Type**, **Category** or **Date range**, or type in the **Search** box (for example "amazon" or "50").
+- Money in shows with a `+`, money out with a `-`. Totals for what's shown appear just above the list.
+- Click **✖ Show everything again** to clear your search.
+- **Tick the box** at the start of a row to change or delete it.
+- **Tick several rows** to delete them together, or to give them all the same category at once. This is handy after importing from your bank.
 
 ### 📁 Import from Your Bank (the easy way)
 
-Don't feel like entering transactions one by one? You don't have to!
+You don't have to type everything in by hand:
 
-1. Log into your bank's website (Chase, Monzo, NatWest, DCU, or any other bank).
-2. Find the option to **download** or **export** your transaction history as a **CSV file**. Most banks have this under "Statements" or "Account Activity".
-3. Back in the app, open the **📁 Import / Export CSV** section on the Transactions page.
-4. Upload the file and click **📥 Import**.
+1. Sign in to your bank's website.
+2. Look for an option to **download** or **export** your transactions as a **CSV** file. It's often under "Statements" or "Account activity".
+3. In the app, open **📁 Import from your bank, or download your transactions** on the Transactions page.
+4. Choose the file and click **📥 Import**.
 
-That's it — **no renaming columns, no reformatting**. The app automatically detects your bank's format and imports everything. Negative amounts become Expenses, positive amounts become Income. If your bank's file has no category column, the app **guesses an expense category from each description** (e.g. "TESCO" → Food, "Uber" → Transportation, "Netflix" → Entertainment); anything it can't recognise becomes "Other" (you can always edit them later).
+The app recognises most banks' files. Money out becomes Expenses and money in becomes Income. If the file has no categories, the app guesses them from the description (for example "TESCO" → Food, "Uber" → Transportation). Anything it can't guess becomes "Other". You can fix those quickly by ticking them and using **Change category**.
 
-> 💡 **Re-importing the same statement is safe.** Rows that exactly match an existing transaction (same date, amount, type, and description) are skipped automatically, so you can upload overlapping statements without creating duplicates. The import summary will tell you how many rows were new vs skipped.
+**Dates:** banks write dates differently (31/12 in the UK, 12/31 in the US). The app works it out from your file. If it can't tell, it shows you a date from your file and asks which one it is.
 
-### 🛠️ If your bank isn't auto-detected
+> 💡 **Importing the same statement twice is safe.** Transactions already in the app are skipped, so you won't get duplicates.
 
-Some banks use unusual column names (e.g. *Trans Date*, *Withdrawal*, *Memo*) that the app doesn't recognise out of the box. When that happens you'll see a **column-mapper** instead of the one-click Import button:
+### 🛠️ If the app doesn't recognise your bank's file
 
-1. A **preview** of the first 5 rows of your file is shown so you can see the data.
-2. For each missing field (**Date**, **Amount**, optionally **Description / Category / Type**) pick the matching column from your file using the drop-downs.
-3. If your file uses single Amount values (with negative numbers for purchases) map only **Amount column**. If your bank uses two separate columns for money out and money in (like NatWest's Debit/Credit), leave Amount as *(none)* and map **Debit** and **Credit** instead.
-4. Choose the **Date format**:
-    - **Auto / DD-first (UK)** — for dates like `31/12/2026`.
-    - **MM-first (US)** — for dates like `12/31/2026`. ⚠️ If your dates look swapped after import, this is the toggle to flip.
-5. Click **✅ Confirm Import**.
+You'll see a short form instead of the Import button:
 
-Everything else (duplicate detection, validation, the import summary) works exactly the same as for auto-detected formats.
+1. The first 5 lines of your file are shown, so you can see what's in it.
+2. For **Date** and **Amount**, pick the matching column from your file. Description and Category are optional.
+3. If your bank uses **two columns**, one for money out and one for money in, leave Amount as *(not in my file)* and pick **Money out** and **Money in** instead.
+4. Want to skip this next month? Open **💾 Remember this layout for next month** and give it a name, like your bank's name.
+5. Click **✅ Import**.
 
 ---
 
 ## 💱 Switching Currency
 
-The sidebar has a **💱 Display Currency** drop-down (right below the page nav). Pick **$**, **£**, or **€**, and every amount across the app re-renders with that symbol — dashboard, transactions, accounts, budgets, AI advisor, and the labels on every input box.
+On the left, under **💱 Display Currency**, pick **$**, **£** or **€**. Every amount in the app then shows with that symbol.
 
-> **Heads up:** changing the currency does **not** convert any numbers — it only swaps the symbol. If you've been tracking dollars and switch to pounds, your $1,200 rent will now show as £1,200. This is a display setting only; mixing currencies in one set of accounts is up to you. If you bank with both USD and GBP institutions, pick whichever symbol you want to think in and treat the numbers as a single shared unit.
+> **Heads up:** this only changes the symbol. It doesn't convert any amounts. Your $1,200 rent would show as £1,200.
 
-Your choice is saved automatically and persists across sessions.
+Your choice is remembered next time.
 
 ---
 
-## 🎯 Step 3: Set Your Budgets
+## 🎯 Step 3: Set Spending Limits
 
-Want to keep spending in check? Set monthly limits.
+Want to keep your spending in check? Set a limit for each month.
 
-1. Click **Dashboard** in the sidebar.
-2. Open the **📝 Manage Category Budgets** section.
-3. Pick a category (like "Food" or "Entertainment") and set your monthly limit.
-4. Click **Set Budget**.
+1. Click **Dashboard** on the left.
+2. Open **✏️ Set spending limits**.
+3. Set **one limit for all your spending**, a **limit for a single category** like Food, or both.
 
-As you log expenses, you'll see colour-coded progress bars on the dashboard:
-- 🟢 Under 80% — you're on track
-- 🟡 80–100% — getting close
-- 🔴 100%+ — over budget
+Coloured bars on the Dashboard show how you're doing this month:
+- 🟢 Under 80% used: you're on track
+- 🟡 80–100% used: getting close
+- 🔴 Over 100%: you've gone over
 
-You can also set an overall **Monthly Expense Goal** to track total spending. This goal always reflects your current calendar month (e.g. "May 2026"), regardless of which date filter is active on the Dashboard.
+Limits are always for the current month, whatever time period the Dashboard is showing.
 
 ---
 
 ## 📊 Step 4: Check Your Dashboard
 
-Once you've added some data, the Dashboard comes to life:
-- **Filters** on the left let you view "This Month", "Last 90 Days", or a custom range.
-- See your **Savings Rate**, **Net Worth**, and **Income vs Expenses** at a glance. On "This Month" the numbers also show how you're doing **compared to last month**.
-- A pie chart shows where your money goes by category.
-- A trend chart shows how your spending changes over time.
+Once you've added some transactions, the Dashboard shows:
+- **Money in**, **Money out**, what's **Left over**, how much you **Saved**, and your **Net worth**. On "This Month", small numbers show the change compared with last month.
+- A chart of **what you spent on**, and a chart of **money in vs money out**.
+- **Where most of your money went**, and your latest transactions.
+
+Use **📅 Show me** on the left to pick a time period, like "This Month" or "Last 90 Days".
 
 ---
 
-## 🧠 Step 5: Talk to the AI Advisor
+## 🧠 Step 5: The AI Advisor
 
-Need advice? The AI Advisor has two tools:
+The AI Advisor page has two parts:
 
-1. **Calculators** — Try the 50/30/20 budgeting rule or the Compound Interest Visualizer to see how your investments could grow.
-2. **AI Chat** — A conversational assistant powered by Google Gemini.
+1. **📊 Planning tools:** the 50/30/20 rule for splitting up your monthly pay, and a tool showing **how savings can grow** over the years.
+2. **💬 Chat with AI:** ask questions about your money and get answers from Google's Gemini AI.
 
-### How to use the AI Chat
+### Turning on the AI chat
 
-To use the chat, you need a **Google Gemini API Key** (free). The sidebar has a **"Get a free key →"** link that takes you straight to Google AI Studio — sign in, click *Create API key*, and paste it back into the app.
+The chat needs a free **Gemini key** from Google:
 
-**Where to enter the key:** On the AI Advisor page, paste it into the **🔑 Gemini API Key** box in the **left sidebar**. Once set, the sidebar will show a "Key set for this session" confirmation, with a **Clear Key** button if you want to remove it.
+1. In the left sidebar on the AI Advisor page, click **"Get a free key →"**.
+2. Sign in with Google and click *Create API key*.
+3. Copy the key and paste it into the **🔑 Key for AI chat** box in the sidebar. It will say **"AI chat is on."**
 
-**Skip re-typing it every time:** create a file named `.env` in the project folder with the line `GEMINI_API_KEY=your-key-here`. The app loads it automatically on startup, so the chat works without touching the sidebar. The `.env` file is gitignored and never leaves your computer.
+The key is only kept until you close the app. To skip pasting it every time, create a file called `.env` in the app folder containing `GEMINI_API_KEY=your-key-here`.
 
-**🔒 Privacy & Security Notes:**
-* **Your API Key is never written to the database.** A key typed into the sidebar lives only in your browser session and disappears when you close the app. (A key in `.env` stays in that local file, which is gitignored.)
-* **The AI does NOT see your individual transactions.** It only sees your high-level numbers: Total Income, Total Expenses, Net Balance, and Total Net Worth.
-* You can click the **"View Data sent to AI"** dropdown above the chat to see exactly what information is being shared.
+**🔒 What the AI sees:**
+* **Not your individual transactions.** Only a short summary: your total money in and out, what's left over, how much you saved, your net worth, and your top 3 spending categories.
+* Open **"See exactly what's shared with the AI"** above the chat to see it word for word.
+* Your key is never saved in the app's data.
 
-**Example questions to ask:**
-- *"My net worth is $X and I have $Y left over this month. What's the best way to use the extra cash?"*
-- *"Based on my total income and expenses, am I saving enough according to the 50/30/20 rule?"*
-- *"I want to build an emergency fund. Based on my current net balance, how long would it take to save $5000?"*
+**Questions you could ask:**
+- *"How can I spend less on food?"*
+- *"Am I saving enough, going by the 50/30/20 rule?"*
+- *"How long would it take me to save $5,000 for an emergency fund?"*
 
 ---
 
-## 💾 Step 6: Back Up Your Data
+## 💾 Step 6: Keep a Backup
 
-Your data lives on your computer, not in the cloud. The app already saves a **daily backup for you automatically** (files called `finance.db.autobak-` plus the date, keeping the last 7 days), but it's still smart to keep your own copy somewhere safe:
+Your data stays on your computer, not online. The app saves a copy for you every day and keeps the last 7 days. It's still smart to keep your own copy somewhere safe, like a USB stick or your cloud storage:
 
-1. Go to **Net Worth & Accounts**.
-2. Scroll to **💾 Database Backup & Restore**.
-3. Click **⬇️ Download Database Backup**.
+1. Click **Backup** on the left.
+2. Click **⬇️ Download my data**.
 
-If you ever need to restore, just upload the backup file in the same section.
-
-> ✅ **Your current data is preserved automatically.** Before a restore replaces `finance.db`, the app saves your existing data as `finance.db.bak` in the same folder — so if you ever restore the wrong file, you can recover by manually renaming `finance.db.bak` back to `finance.db`. Note that only the most recent restore is preserved this way, so still download a fresh backup beforehand if you want a separate copy.
+To bring a saved copy back, use **Bring back a saved copy** on the same page. Just in case, the app keeps what was there before as a file called `finance.db.bak`.
 
 ---
 

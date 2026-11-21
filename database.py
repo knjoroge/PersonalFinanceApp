@@ -6,6 +6,7 @@ Handles transactions, accounts, budgets, preferences, CSV import/export, and bac
 """
 
 import sqlite3
+import json
 import shutil
 import glob
 import pandas as pd
@@ -167,6 +168,16 @@ def update_transaction(transaction_id: int, date: str, amount: float,
     )
 
 
+def set_category(transaction_ids: list, category: str) -> None:
+    """Give several transactions the same category (e.g. after a bank import)."""
+    if category not in INCOME_CATEGORIES + EXPENSE_CATEGORIES:
+        raise ValueError(f"Unknown category '{category}'.")
+    with _connect() as conn:
+        conn.executemany("UPDATE transactions SET category = ? WHERE id = ?",
+                         [(category, int(i)) for i in transaction_ids])
+        conn.commit()
+
+
 def summarize(df: pd.DataFrame) -> Dict[str, float]:
     """Compute headline totals (income / expense / net / savings rate) from a transactions dataframe.
 
@@ -259,6 +270,11 @@ def get_preference(key: str, default: Optional[str] = None) -> Optional[str]:
     with _connect() as conn:
         row = conn.execute("SELECT value FROM preferences WHERE key = ?", (key,)).fetchone()
     return row[0] if row else default
+
+
+def delete_preference(key: str) -> None:
+    """Forget a saved setting."""
+    _exec("DELETE FROM preferences WHERE key = ?", (key,))
 
 
 def set_preference(key: str, value: str) -> None:
@@ -535,6 +551,46 @@ def _existing_transaction_keys() -> set:
 
 
 # Fields the importer needs at minimum. "amount" can be satisfied EITHER by a
+def guess_date_order(dates) -> Tuple[Optional[bool], Optional[str]]:
+    """Work out whether dates like 02/03/2026 are day-first or month-first.
+
+    Looks for a date that settles it: "31/12/2026" can only be day-first,
+    "12/31/2026" can only be month-first. Returns (dayfirst, example):
+      * (True, None) or (False, None) when the file makes it clear (or the
+        dates are unambiguous anyway, like 2026-03-02 or 2 Mar 2026);
+      * (None, "02/03/2026") when every date could be read either way, with an
+        example the app can show the user so they can say which it is.
+    """
+    example = None
+    for value in dates:
+        text = str(value).strip().split(" ")[0]
+        parts = re.split(r"[/.\-]", text)
+        if len(parts) != 3 or not all(p.isdigit() for p in parts) or len(parts[0]) == 4:
+            continue  # not a dd/mm/yyyy-style date, so there's nothing to decide
+        first, second = int(parts[0]), int(parts[1])
+        if first > 12:
+            return True, None
+        if second > 12:
+            return False, None
+        if first != second and example is None:
+            example = text
+    if example is None:
+        return True, None
+    return None, example
+
+
+def guess_date_order_for_column(csv_content: Union[str, bytes],
+                                column: Optional[str]) -> Tuple[Optional[bool], Optional[str]]:
+    """Same as guess_date_order(), for one column of an uploaded CSV file."""
+    if not column:
+        return True, None
+    try:
+        df, _ = _read_csv_smart(_decode_csv(csv_content))
+        return guess_date_order(df[column].dropna().tolist())
+    except Exception:
+        return None, None
+
+
 # single amount column OR by a debit + credit pair (see _parse_amount_and_type).
 _CSV_REQUIRED_FIELDS = ("date", "amount")
 
@@ -680,7 +736,10 @@ def import_transactions_csv(
     return len(rows_to_insert), skipped, ("; ".join(errors) if errors else None)
 
 
-# --- Demo data (helper for empty-state onboarding) ---
+# --- Sample data (helper for empty-state onboarding) ---
+
+SAMPLE_DATA_KEY = "sample_data_ids"
+
 
 def load_demo_data() -> int:
     """Populate the database with a small, realistic month of sample data.
@@ -720,23 +779,50 @@ def load_demo_data() -> int:
         )
         for offset, amount, category, t_type, desc in samples
     ]
+    ts = today.strftime("%Y-%m-%d %H:%M:%S")
+    # Three sample accounts to give Net Worth + the dashboard's net worth metric something to show.
+    accounts = [
+        ("Sample Checking",    "Checking",    2400.00, ts),
+        ("Sample Savings",     "Savings",     8500.00, ts),
+        ("Sample Credit Card", "Credit Card", -450.00, ts),
+    ]
+    added = {"transactions": [], "accounts": []}
     with _connect() as conn:
-        conn.executemany(
-            "INSERT INTO transactions (date, amount, category, type, description) VALUES (?, ?, ?, ?, ?)",
-            rows,
-        )
-        # Three sample accounts to give Net Worth + the dashboard's net worth metric something to show.
-        ts = today.strftime("%Y-%m-%d %H:%M:%S")
-        conn.executemany(
-            "INSERT INTO accounts (name, type, balance, last_updated) VALUES (?, ?, ?, ?)",
-            [
-                ("Demo Checking",  "Checking", 2400.00,  ts),
-                ("Demo Savings",   "Savings",  8500.00,  ts),
-                ("Demo Credit Card", "Credit Card", -450.00, ts),
-            ],
-        )
+        for row in rows:
+            cur = conn.execute(
+                "INSERT INTO transactions (date, amount, category, type, description) VALUES (?, ?, ?, ?, ?)",
+                row,
+            )
+            added["transactions"].append(cur.lastrowid)
+        for row in accounts:
+            cur = conn.execute(
+                "INSERT INTO accounts (name, type, balance, last_updated) VALUES (?, ?, ?, ?)", row,
+            )
+            added["accounts"].append(cur.lastrowid)
         conn.commit()
+    # Remember exactly which rows are samples, so remove_sample_data() can take
+    # them out later without touching anything the user added themselves.
+    set_preference(SAMPLE_DATA_KEY, json.dumps(added))
     return len(rows)
+
+
+def has_sample_data() -> bool:
+    """True if sample data has been loaded and not removed yet."""
+    return get_preference(SAMPLE_DATA_KEY) is not None
+
+
+def remove_sample_data() -> int:
+    """Delete only the sample transactions and accounts. Returns how many transactions were removed."""
+    stored = get_preference(SAMPLE_DATA_KEY)
+    if not stored:
+        return 0
+    added = json.loads(stored)
+    with _connect() as conn:
+        conn.executemany("DELETE FROM transactions WHERE id = ?", [(i,) for i in added["transactions"]])
+        conn.executemany("DELETE FROM accounts WHERE id = ?", [(i,) for i in added["accounts"]])
+        conn.execute("DELETE FROM preferences WHERE key = ?", (SAMPLE_DATA_KEY,))
+        conn.commit()
+    return len(added["transactions"])
 
 
 # --- Database Backup & Restore ---
@@ -765,18 +851,19 @@ def import_database(db_bytes: bytes) -> Tuple[bool, str]:
             tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
             if "transactions" not in tables or "accounts" not in tables:
                 os.remove(temp_path)
-                return False, "Invalid database: missing required tables (transactions, accounts)."
+                return False, ("That file isn't a backup from this app. "
+                               "Choose the .db file you downloaded from the Backup page.")
 
         # Keep a safety copy of the old DB before overwriting.
         if os.path.exists(DB_PATH):
             shutil.copy2(DB_PATH, backup_path)
 
         os.replace(temp_path, DB_PATH)
-        return True, "Database restored successfully! Previous data saved as finance.db.bak."
+        return True, "Your saved copy is back! What was here before is kept as finance.db.bak."
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        return False, f"Restore failed: {str(e)}"
+        return False, f"Sorry, that copy couldn't be brought back. The file may be damaged. ({e})"
 
 
 def auto_backup(keep: int = 7) -> Optional[str]:

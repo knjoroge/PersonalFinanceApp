@@ -4,7 +4,7 @@ app.py — Main entry point for the Personal Finance Manager.
 This is the file you run to start the app. It sets up the browser page,
 creates the database if it doesn't exist yet, and builds the sidebar
 navigation so you can switch between the different screens (Dashboard,
-Transactions, Net Worth & Accounts, and AI Advisor).
+Transactions, Net Worth & Accounts, AI Advisor, and Backup).
 """
 
 import streamlit as st
@@ -48,8 +48,8 @@ def main():
 
     # Let the user choose which page to view.
     page = st.sidebar.radio(
-        "Navigate",
-        ["Dashboard", "Transactions", "Net Worth & Accounts", "AI Advisor"]
+        "Go to",
+        ["Dashboard", "Transactions", "Net Worth & Accounts", "AI Advisor", "Backup"]
     )
 
     st.sidebar.markdown("---")
@@ -64,6 +64,10 @@ def main():
     st.sidebar.info(
         "Track your wealth, control your expenses, and get personalized advice."
     )
+
+    # While sample data is loaded, show a "remove it" reminder on every page.
+    from views._shared import sample_data_banner
+    sample_data_banner()
 
     # --- Load the Selected Page ---
     # Each page lives in its own file inside the "views" folder.
@@ -81,6 +85,9 @@ def main():
     elif page == "AI Advisor":
         from views.advisor import render_advisor
         render_advisor()
+    elif page == "Backup":
+        from views.backup import render_backup
+        render_backup()
 
 
 if __name__ == "__main__":

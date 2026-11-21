@@ -87,17 +87,17 @@ def _render_api_key_sidebar() -> str:
         # box. Users without one can still type a key into the box below.
         st.session_state.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
-    st.sidebar.markdown("### 🔑 Gemini API Key")
+    st.sidebar.markdown("### 🔑 Key for AI chat")
     if st.session_state.gemini_api_key:
-        st.sidebar.success("Key set for this session.")
+        st.sidebar.success("AI chat is on.")
         if st.sidebar.button("Clear Key", use_container_width=True):
             st.session_state.gemini_api_key = ""
             st.rerun()
     else:
         entered = st.sidebar.text_input(
-            "Enter key to enable AI chat",
+            "Paste your Gemini key to turn on AI chat",
             type="password",
-            help="Stored only for this browser session — never written to disk."
+            help="Only kept until you close the app. It's never saved."
         )
         st.sidebar.caption(
             "Don't have one? [Get a free key →](https://aistudio.google.com/apikey) "
@@ -148,7 +148,7 @@ def _compound_growth(principal: float, monthly_contrib: float,
 def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     """Render the 50/30/20 rule breakdown and compound interest visualiser."""
     st.subheader("The 50/30/20 Rule")
-    st.write("A popular rule of thumb for budgeting your income:")
+    st.write("A simple rule of thumb for splitting up the money you take home each month:")
 
     avg_income = _avg_monthly_income(df_trans)
     default_income = avg_income if avg_income > 0 else 4000.0
@@ -159,7 +159,7 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     )
 
     income_input = st.number_input(
-        f"Monthly Net Income for projection ({db.get_currency()}):",
+        f"Money you take home each month, after tax ({db.get_currency()}):",
         min_value=1.0, value=default_income, step=100.0, help=help_txt,
     )
 
@@ -168,13 +168,14 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     c1.caption("Housing, groceries, utilities, minimum debt payments.")
     c2.metric("Wants (30%)", db.format_money(income_input * 0.3))
     c2.caption("Entertainment, dining out, hobbies.")
-    c3.metric("Savings & Debt (20%)", db.format_money(income_input * 0.2))
+    c3.metric("Saving & paying off debt (20%)", db.format_money(income_input * 0.2))
     c3.caption("Investments, emergency fund, extra debt payments.")
 
     st.markdown("---")
 
-    st.subheader("📈 Compound Interest Visualizer")
-    st.write("See how your investments could grow over time.")
+    st.subheader("📈 How savings can grow")
+    st.write("See how money you save or invest could grow over the years, "
+             "as the growth itself starts growing too (called compound interest).")
 
     c1, c2, c3, c4 = st.columns(4)
     principal = c1.number_input(
@@ -185,7 +186,9 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     )
     years = c3.slider("Years to Grow", min_value=1, max_value=40, value=10)
     rate = c4.number_input(
-        "Annual Return (%)", min_value=0.0, max_value=30.0, value=7.0, step=0.5,
+        "Growth per year (%)", min_value=0.0, max_value=30.0, value=7.0, step=0.5,
+        help="A guess, not a promise. Savings accounts often pay 1–5% a year. "
+             "Stock market investments have averaged more over the long run, but go up and down.",
     ) / 100.0
 
     df_growth = _compound_growth(principal, monthly_contrib, rate, years)
@@ -196,21 +199,23 @@ def _render_calculators_tab(df_trans: pd.DataFrame) -> None:
     total_interest = final_value - total_contributed
 
     m1, m2, m3 = st.columns(3)
-    m1.metric(f"Projected Value ({years}yr)", db.format_money(final_value))
-    m2.metric("Total Contributed", db.format_money(total_contributed))
-    m3.metric("Interest Earned", db.format_money(total_interest))
+    m1.metric(f"Could be worth after {years} years", db.format_money(final_value))
+    m2.metric("Money you put in", db.format_money(total_contributed))
+    m3.metric("Growth on top", db.format_money(total_interest))
 
 
 def _render_chat_tab(api_key: str, finance_context: str) -> None:
     """Render the Gemini chat panel anchored to the user's financial context."""
-    st.subheader("Personalized Q&A")
-    st.write("Ask questions and get advice based on your current tracking data.")
+    st.subheader("Ask about your money")
+    st.write("Ask anything, like *\"How can I spend less on food?\"*. "
+             "The AI sees a short summary of your totals so its answers fit you.")
 
-    with st.expander("View Data sent to AI", expanded=False):
+    with st.expander("See exactly what's shared with the AI", expanded=False):
         st.text(finance_context)
 
     if not api_key:
-        st.info("💡 Add your Gemini API key in the sidebar to enable chat.")
+        st.info("💡 To use the chat, add a free Gemini key in the sidebar on the left. "
+                "There's a link there showing how to get one.")
 
     if "messages" not in st.session_state:
         st.session_state.messages = [{
@@ -223,12 +228,12 @@ def _render_chat_tab(api_key: str, finance_context: str) -> None:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    prompt = st.chat_input("Ask a finance question...")
+    prompt = st.chat_input("Ask a question about your money...")
     if not prompt:
         return
 
     if not api_key:
-        st.error("Please enter a Gemini API Key in the sidebar first.")
+        st.error("Please add your Gemini key in the sidebar first.")
         return
 
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -278,7 +283,7 @@ def render_advisor():
     )
 
     st.markdown("---")
-    tab1, tab2 = st.tabs(["📊 Calculators & Rules", "💬 Chat with AI"])
+    tab1, tab2 = st.tabs(["📊 Planning tools", "💬 Chat with AI"])
     with tab1:
         _render_calculators_tab(df_trans)
     with tab2:

@@ -612,3 +612,39 @@ def test_auto_backup_keeps_last_7_days(sample_transactions, monkeypatch):
     assert len(backups) == 7
     assert backups[0].endswith("2026-01-04")   # oldest three removed
     assert backups[-1].endswith("2026-02-01")
+
+
+class TestGuessDateOrder:
+    """Working out whether 02/03/2026 means 2 March or February 3."""
+
+    def test_day_over_12_means_day_first(self):
+        assert db.guess_date_order(["01/02/2026", "25/02/2026"]) == (True, None)
+
+    def test_second_number_over_12_means_month_first(self):
+        assert db.guess_date_order(["01/02/2026", "02/25/2026"]) == (False, None)
+
+    def test_ambiguous_returns_example(self):
+        assert db.guess_date_order(["01/02/2026", "03/04/2026"]) == (None, "01/02/2026")
+
+    def test_year_first_and_named_months_need_no_question(self):
+        assert db.guess_date_order(["2026-03-02", "2 Mar 2026"]) == (True, None)
+
+
+def test_remove_sample_data_only_removes_samples():
+    db.load_demo_data()
+    db.add_transaction("2026-01-05", 42.0, "Food", "Expense", "Mine")
+    assert db.has_sample_data()
+    assert db.remove_sample_data() > 0
+    assert db.get_all_transactions()["description"].tolist() == ["Mine"]
+    assert db.get_all_accounts().empty
+    assert not db.has_sample_data()
+
+
+def test_set_category_changes_several_rows(sample_transactions):
+    df = db.get_all_transactions()
+    ids = df[df["type"] == "Expense"]["id"].tolist()
+    db.set_category(ids, "Entertainment")
+    df = db.get_all_transactions()
+    assert set(df[df["type"] == "Expense"]["category"]) == {"Entertainment"}
+    with pytest.raises(ValueError):
+        db.set_category(ids, "Not a category")

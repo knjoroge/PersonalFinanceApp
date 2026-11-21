@@ -87,3 +87,27 @@ def render_currency_selector() -> None:
     if choice != current:
         db.set_currency(choice)
         st.rerun()
+
+
+def sample_data_button(key: str) -> None:
+    """Offer to fill an empty app with sample data, so new users can look around first."""
+    st.caption("Want to look around first? Load some made-up example data. "
+               "You can remove it with one click whenever you're ready.")
+    if st.button("✨ Show me with sample data", key=key):
+        count = db.load_demo_data()
+        if count:
+            st.toast(f"Added {count} example transactions and 3 example accounts.", icon="✨")
+            st.rerun()
+
+
+def sample_data_banner() -> None:
+    """While sample data is loaded, remind the user on every page and offer to remove it."""
+    if not db.has_sample_data():
+        return
+    c1, c2 = st.columns([4, 1])
+    c1.info("👋 You're looking at **made-up sample data**. "
+            "Remove it when you're ready to add your own. Anything you've added yourself stays.")
+    if c2.button("🧹 Remove sample data", use_container_width=True, key="remove_sample_data"):
+        count = db.remove_sample_data()
+        st.toast(f"Removed {count} sample transactions and the sample accounts.", icon="🧹")
+        st.rerun()

@@ -1,7 +1,7 @@
 """
 dashboard.py — The main financial overview page.
 
-Shows key stats, budget progress, charts, and recent transactions.
+Shows key totals, spending limits, charts, and recent transactions.
 Everything can be filtered by time period using the sidebar.
 """
 
@@ -12,16 +12,15 @@ import database as db
 from datetime import datetime, timedelta
 
 from database import EXPENSE_CATEGORIES
-from views._shared import confirm_delete_dialog, signed_money
+from views._shared import confirm_delete_dialog, signed_money, sample_data_button
 
 MONTHLY_GOAL_KEY = "monthly_expense_goal"
-DEFAULT_MONTHLY_GOAL = 2000.0
 
 
 def _current_month_rows(df_trans: pd.DataFrame) -> pd.DataFrame:
     """Return only the transactions dated within the current calendar month.
 
-    Shared by the budget tracker and the monthly expense goal — both are always
+    Used by the spending limits, which are always
     scoped to "this month" regardless of the dashboard's selected time filter.
     Expects df_trans['date'] to already be datetime.
     """
@@ -31,15 +30,14 @@ def _current_month_rows(df_trans: pd.DataFrame) -> pd.DataFrame:
 
 def _open_delete_budget_dialog(budget_id, category, monthly_limit):
     """Open the "are you sure?" pop-up before removing a category budget."""
-    body = f"Remove the budget for **{category}** ({db.format_money(monthly_limit, 0)}/month)?"
-    caption = ("This only removes the budget — your transactions in this category stay. "
-               "This cannot be undone.")
+    body = f"Remove the spending limit for **{category}** ({db.format_money(monthly_limit, 0)} a month)?"
+    caption = "Only the limit is removed. Your transactions in this category stay."
     confirm_delete_dialog(
-        title="Remove Budget?",
+        title="Remove spending limit?",
         body=body,
         caption=caption,
         confirm_label="Remove",
-        on_confirm=lambda: (db.delete_budget(budget_id), st.toast("Budget removed.", icon="🗑️")),
+        on_confirm=lambda: (db.delete_budget(budget_id), st.toast("Limit removed.", icon="🗑️")),
         key_suffix=f"bud_{budget_id}",
     )
 
@@ -50,9 +48,9 @@ def _render_filters(df_trans: pd.DataFrame) -> pd.DataFrame:
     Supports preset ranges (This Month, Last Month, Last 90 Days, All Time) and
     a custom date picker.
     """
-    st.sidebar.markdown("### Dashboard Filters")
+    st.sidebar.markdown("### 📅 Show me")
     filter_option = st.sidebar.selectbox(
-        "Time Period",
+        "Time period",
         ("This Month", "Last Month", "Last 90 Days", "All Time", "Custom Range")
     )
 
@@ -108,7 +106,7 @@ def _mom_deltas(df_trans: pd.DataFrame) -> dict:
         'income': money_delta('income'),
         'expense': money_delta('expense'),
         'net': money_delta('net'),
-        'savings_rate': f"{sr_diff:+.1f} pts",
+        'savings_rate': f"{sr_diff:+.1f}%",
     }
 
 
@@ -127,124 +125,124 @@ def _render_metrics(filtered_df: pd.DataFrame, net_worth: float, deltas: dict = 
     d = deltas or {}
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Total Income", db.format_money(total_income), delta=d.get('income'))
-    m2.metric("Total Expenses", db.format_money(total_expense),
-              delta=d.get('expense'), delta_color="inverse")
-    m3.metric("Net Period Balance", db.format_money(net_balance), delta=d.get('net'))
-    m4.metric("Savings Rate", f"{savings_rate:.1f}%", delta=d.get('savings_rate'))
-    m5.metric("Total Net Worth", db.format_money(net_worth))
+    m1.metric("Money in", db.format_money(total_income), delta=d.get('income'),
+              help="Everything you earned in this period.")
+    m2.metric("Money out", db.format_money(total_expense),
+              delta=d.get('expense'), delta_color="inverse",
+              help="Everything you spent in this period.")
+    m3.metric("Left over", db.format_money(net_balance), delta=d.get('net'),
+              help="Money in minus money out.")
+    m4.metric("Saved", f"{savings_rate:.1f}%", delta=d.get('savings_rate'),
+              help="How much of the money that came in you kept.")
+    m5.metric("Net worth", db.format_money(net_worth),
+              help="What you own minus what you owe, from the Net Worth & Accounts page.")
 
     if deltas:
-        st.caption("Deltas compare this month to last month.")
+        st.caption("The small numbers show the change compared with last month.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
 
-def _render_budget_tracker(df_trans: pd.DataFrame, budgets_df: pd.DataFrame) -> None:
-    """Show colour-coded progress bars for each category budget (green/yellow/red).
+def _limit_bar(label: str, spent: float, limit: float) -> None:
+    """One green/yellow/red progress bar: how much of a monthly limit is used."""
+    progress = min(spent / limit, 1.0) if limit > 0 else 0
+    status = "🟢" if progress < 0.8 else "🟡" if progress < 1.0 else "🔴"
+    st.markdown(f"**{status} {label}**")
+    st.progress(progress)
+    left = limit - spent
+    note = f"{db.format_money(left, 0)} left" if left >= 0 else f"{db.format_money(-left, 0)} over"
+    st.caption(f"Spent {db.format_money(spent, 0)} of {db.format_money(limit, 0)} · {note}")
 
-    Budget limits are monthly, so spend is always measured against the CURRENT
-    calendar month — never the dashboard's selected filter. Otherwise an
-    "All Time" filter would compare months of spend against a one-month limit
-    and every bar would look maxed out.
+
+def _render_spending_limits(df_trans: pd.DataFrame, budgets_df: pd.DataFrame) -> None:
+    """Show and manage monthly spending limits, all in one place.
+
+    Two kinds, both for the CURRENT calendar month (never the sidebar filter,
+    or "All Time" would compare years of spending against a one-month limit):
+      * one limit for all spending together (stored in preferences), and
+      * optional limits for single categories, like Food (the budgets table).
     """
-    this_month = _current_month_rows(df_trans)
-    df_expenses = this_month[this_month['type'] == 'Expense']
-    expense_by_cat = (df_expenses.groupby('category')['amount'].sum()
-                      if not df_expenses.empty else pd.Series(dtype=float))
-
-    st.markdown(f"### 🎯 Category Budget Tracker ({pd.Timestamp.today().strftime('%B %Y')})")
-
-    # One-glance alert: which categories have blown past their monthly limit.
-    over = [row['category'] for _, row in budgets_df.iterrows()
-            if row['monthly_limit'] > 0 and expense_by_cat.get(row['category'], 0.0) > row['monthly_limit']]
-    if over:
-        st.error(f"🔴 Over budget this month in: **{', '.join(over)}**")
-
-    budget_cols = st.columns(min(len(budgets_df), 4))
-    for idx, (_, row) in enumerate(budgets_df.iterrows()):
-        col = budget_cols[idx % len(budget_cols)]
-        cat, limit = row['category'], row['monthly_limit']
-        spent = expense_by_cat.get(cat, 0.0)
-        progress = min(spent / limit, 1.0) if limit > 0 else 0
-
-        with col:
-            status = "🟢" if progress < 0.8 else "🟡" if progress < 1.0 else "🔴"
-            st.markdown(f"**{status} {cat}**")
-            st.progress(progress)
-            st.caption(f"{db.format_money(spent, 0)} / {db.format_money(limit, 0)} ({progress*100:.0f}%)")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-
-def _render_monthly_goal(df_trans: pd.DataFrame) -> None:
-    """Render the "Monthly Expense Goal" expander.
-
-    Always scoped to the current calendar month. The chosen goal amount is
-    saved to the preferences table so it persists between sessions.
-    """
-    today = pd.Timestamp.today()
-    this_month = _current_month_rows(df_trans)
-    month_expense = this_month[this_month['type'] == 'Expense']['amount'].sum()
+    this_month = _current_month_rows(df_trans) if not df_trans.empty else df_trans
+    expenses = this_month[this_month['type'] == 'Expense'] if not this_month.empty else this_month
+    spent_total = float(expenses['amount'].sum()) if not expenses.empty else 0.0
+    spent_by_cat = expenses.groupby('category')['amount'].sum() if not expenses.empty else pd.Series(dtype=float)
 
     stored = db.get_preference(MONTHLY_GOAL_KEY)
-    saved_goal = float(stored) if stored else DEFAULT_MONTHLY_GOAL
+    overall_limit = float(stored) if stored else None
 
-    with st.expander(f"🎯 Monthly Expense Goal ({today.strftime('%B %Y')})", expanded=False):
-        g1, g2 = st.columns([4, 1])
-        with g1:
-            goal_amount = st.number_input(
-                f"Set your monthly expense goal ({db.get_currency()}):",
-                min_value=1.0, value=saved_goal, step=100.0,
-                key="monthly_goal_input",
+    month_name = pd.Timestamp.today().strftime('%B')
+    st.markdown(f"### 🎯 Spending limits for {month_name}")
+
+    if overall_limit is None and budgets_df.empty:
+        st.caption("Set a limit for how much you want to spend each month, and the app "
+                   "will show how close you are. Open **Set spending limits** below to start.")
+    else:
+        over = [r['category'] for _, r in budgets_df.iterrows()
+                if r['monthly_limit'] > 0 and spent_by_cat.get(r['category'], 0.0) > r['monthly_limit']]
+        if overall_limit and spent_total > overall_limit:
+            over.insert(0, "your overall limit")
+        if over:
+            st.error(f"🔴 You've gone over: **{', '.join(over)}**")
+
+        bars = []
+        if overall_limit:
+            bars.append(("All spending", spent_total, overall_limit))
+        bars += [(r['category'], spent_by_cat.get(r['category'], 0.0), r['monthly_limit'])
+                 for _, r in budgets_df.iterrows()]
+        cols = st.columns(min(len(bars), 4))
+        for idx, (label, spent, limit) in enumerate(bars):
+            with cols[idx % len(cols)]:
+                _limit_bar(label, spent, limit)
+
+    with st.expander("✏️ Set spending limits", expanded=False):
+        st.markdown("**For all your spending**")
+        o1, o2 = st.columns([3, 1])
+        with o1:
+            new_overall = st.number_input(
+                f"Most I want to spend in a month, in total ({db.get_currency()})",
+                min_value=0.0, value=overall_limit or 0.0, step=100.0,
+                help="Leave at 0 if you don't want an overall limit.",
             )
-        with g2:
+        with o2:
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Reset", help=f"Reset to default ({db.format_money(DEFAULT_MONTHLY_GOAL, 0)})"):
-                db.set_preference(MONTHLY_GOAL_KEY, DEFAULT_MONTHLY_GOAL)
+            if st.button("Save", key="save_overall_limit", use_container_width=True):
+                if new_overall > 0:
+                    db.set_preference(MONTHLY_GOAL_KEY, new_overall)
+                    st.toast("Overall limit saved.", icon="✅")
+                else:
+                    db.delete_preference(MONTHLY_GOAL_KEY)
+                    st.toast("Overall limit removed.", icon="🗑️")
                 st.rerun()
 
-        if goal_amount != saved_goal:
-            db.set_preference(MONTHLY_GOAL_KEY, goal_amount)
-
-        progress = min(month_expense / goal_amount, 1.0) if goal_amount > 0 else 0
-        icon = "🟢" if progress < 0.8 else "🟡" if progress < 1.0 else "🔴"
-        st.progress(progress)
-        st.caption(
-            f"{icon} You have spent **{db.format_money(month_expense)}** of your "
-            f"**{db.format_money(goal_amount)}** goal ({progress*100:.1f}%)."
-        )
-
-
-def _render_manage_budgets(budgets_df: pd.DataFrame) -> None:
-    """Render the expander for setting and removing category budgets."""
-    with st.expander("📝 Manage Category Budgets", expanded=False):
+        st.markdown("**For one category** (optional), for example, Food")
         with st.form("budget_form"):
             b_col1, b_col2 = st.columns(2)
             with b_col1:
                 budget_cat = st.selectbox("Category", EXPENSE_CATEGORIES)
             with b_col2:
                 budget_limit = st.number_input(
-                    f"Monthly Budget ({db.get_currency()})",
+                    f"Most I want to spend on it in a month ({db.get_currency()})",
                     min_value=1.0, value=500.0, step=50.0,
                 )
-
-            if st.form_submit_button("Set Budget", use_container_width=True):
+            if st.form_submit_button("Save category limit", use_container_width=True):
                 db.set_budget(budget_cat, budget_limit)
-                st.toast(f"Budget set for {budget_cat}!", icon="✅")
+                st.toast(f"Limit saved for {budget_cat}.", icon="✅")
                 st.rerun()
 
         if not budgets_df.empty:
-            st.dataframe(budgets_df[['category', 'monthly_limit']], use_container_width=True, hide_index=True)
             budget_options = {
-                f"{r['category']} ({db.format_money(r['monthly_limit'], 0)})": r['id']
+                f"{r['category']} ({db.format_money(r['monthly_limit'], 0)} a month)": r['id']
                 for _, r in budgets_df.iterrows()
             }
-            del_budget = st.selectbox("Remove Budget", list(budget_options.keys()))
-            if st.button("Remove", key="del_budget_btn"):
-                sel_id = budget_options[del_budget]
-                sel = budgets_df[budgets_df['id'] == sel_id].iloc[0]
-                _open_delete_budget_dialog(int(sel_id), sel['category'], float(sel['monthly_limit']))
+            r1, r2 = st.columns([3, 1])
+            with r1:
+                del_budget = st.selectbox("Remove a category limit", list(budget_options.keys()))
+            with r2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("Remove", key="del_budget_btn", use_container_width=True):
+                    sel_id = budget_options[del_budget]
+                    sel = budgets_df[budgets_df['id'] == sel_id].iloc[0]
+                    _open_delete_budget_dialog(int(sel_id), sel['category'], float(sel['monthly_limit']))
 
 
 def _render_charts(filtered_df: pd.DataFrame) -> None:
@@ -257,7 +255,7 @@ def _render_charts(filtered_df: pd.DataFrame) -> None:
     sym = db.get_currency()
 
     with col1:
-        st.subheader("Expenses by Category")
+        st.subheader("What you spent on")
         df_expenses = filtered_df[filtered_df['type'] == 'Expense']
         if not df_expenses.empty:
             grouped = df_expenses.groupby('category')['amount'].sum().reset_index()
@@ -272,10 +270,10 @@ def _render_charts(filtered_df: pd.DataFrame) -> None:
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No expense data in this period.")
+            st.info("No spending in this period.")
 
     with col2:
-        st.subheader("Income vs Expenses Over Time")
+        st.subheader("Money in vs money out")
         trend_df = filtered_df.groupby([filtered_df['date'].dt.normalize(), 'type'])['amount'].sum().reset_index()
         if not trend_df.empty:
             fig = px.bar(trend_df, x='date', y='amount', color='type', barmode='group',
@@ -290,7 +288,7 @@ def _render_charts(filtered_df: pd.DataFrame) -> None:
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No trend data available.")
+            st.info("Nothing to show for this period yet.")
 
 
 def _render_top_merchants(filtered_df: pd.DataFrame) -> None:
@@ -307,26 +305,27 @@ def _render_top_merchants(filtered_df: pd.DataFrame) -> None:
 
     top = (df_expenses.groupby('description')['amount']
            .sum().sort_values(ascending=False).head(5).reset_index())
-    top.columns = ['Merchant', 'Total spent']
+    top.columns = ['Paid to', 'Total spent']
     top['Total spent'] = top['Total spent'].map(lambda v: db.format_money(v))
 
-    st.subheader("🏆 Top Merchants (Filtered)")
+    st.subheader("🏆 Where most of your money went")
     st.dataframe(top, use_container_width=True, hide_index=True)
 
 
 def _render_recent_transactions(filtered_df: pd.DataFrame) -> None:
     """Render the small preview table of the most recent transactions in range (up to 10)."""
-    st.subheader("Recent Transactions (Filtered)")
+    st.subheader("Latest transactions")
     display = filtered_df.copy()
-    display['date'] = display['date'].dt.strftime('%Y-%m-%d')
+    display['date'] = display['date'].dt.strftime('%d %b %Y')
     display['amount'] = display.apply(lambda r: signed_money(r['amount'], r['type']), axis=1)
-    st.dataframe(display.head(10)[['date', 'type', 'category', 'amount', 'description']],
-                 use_container_width=True, hide_index=True)
+    display = display.head(10)[['date', 'type', 'category', 'amount', 'description']]
+    display.columns = ['Date', 'Type', 'Category', 'Amount', 'Description']
+    st.dataframe(display, use_container_width=True, hide_index=True)
 
 
 def render_dashboard():
     """Top-level entry point for the Dashboard page."""
-    st.title("📊 Financial Dashboard")
+    st.title("📊 Dashboard")
     st.markdown("---")
 
     df_trans = db.get_all_transactions()
@@ -337,15 +336,9 @@ def render_dashboard():
     # every part of the dashboard is supposed to look like.
     if df_trans.empty:
         _render_metrics(df_trans, net_worth)
-        st.info(
-            "Add some transactions in the 'Transactions' tab to see your dashboard come to life — "
-            "or click below to load a month of sample data so you can explore first."
-        )
-        if st.button("✨ Load demo data", use_container_width=False):
-            count = db.load_demo_data()
-            if count:
-                st.toast(f"Loaded {count} sample transactions + 3 accounts.", icon="✨")
-                st.rerun()
+        st.info("Welcome! Add your first transaction on the **Transactions** page "
+                "and this page will fill in with your totals and charts.")
+        sample_data_button(key="sample_from_dashboard")
         return
 
     df_trans['date'] = pd.to_datetime(df_trans['date'])
@@ -355,12 +348,7 @@ def render_dashboard():
     deltas = _mom_deltas(df_trans) if filter_option == "This Month" else None
     _render_metrics(filtered_df, net_worth, deltas)
 
-    budgets_df = db.get_all_budgets()
-    if not budgets_df.empty:
-        _render_budget_tracker(df_trans, budgets_df)
-
-    _render_monthly_goal(df_trans)
-    _render_manage_budgets(budgets_df)
+    _render_spending_limits(df_trans, db.get_all_budgets())
 
     st.markdown("<br>", unsafe_allow_html=True)
 

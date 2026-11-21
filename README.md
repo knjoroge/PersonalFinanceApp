@@ -2,7 +2,7 @@
 
 A friendly, easy-to-use app for managing your personal finances — built with Python.
 
-Track your spending, set budgets, monitor your net worth, and get AI-powered financial advice — all from your browser.
+Track your spending, set spending limits, monitor your net worth, and get AI-powered financial advice — all from your browser.
 
 ---
 
@@ -48,10 +48,11 @@ You can also type `make` on its own to see all available commands.
 
 - **See your money at a glance** — A visual dashboard shows income, expenses, savings rate, and net worth.
 - **Track every dollar** — Log income and expenses with categories and browse your full history.
-- **Set spending budgets** — Choose a monthly limit for any category and watch colour-coded progress bars.
+- **Set spending limits** — One monthly limit for all your spending, or limits for single categories, with colour-coded progress bars.
 - **Import from your bank** — Upload a CSV from your bank to bulk-add transactions, or download your data.
 - **Monitor your net worth** — Enter balances for assets (bank accounts, retirement funds, investments) *and* liabilities (credit cards, mortgages, loans) for a true net-worth picture. The account type decides whether it counts as owned or owed — no negative numbers needed.
-- **Back up your data** — Download your entire database to keep a safe copy, and restore it any time. The app also saves a daily backup for you automatically.
+- **Back up your data** — Download all your data to keep a safe copy, and bring it back any time. The app also saves a daily backup for you automatically.
+- **Try it with sample data** — Explore with made-up examples first, then remove them in one click.
 - **Get AI advice** — Ask an AI assistant (powered by Google Gemini) questions about your finances.
 
 ---
@@ -61,13 +62,13 @@ You can also type `make` on its own to see all available commands.
 | Feature | What It Does |
 |---|---|
 | 📊 **Dashboard** | Charts of spending by category, income vs expenses over time, and key stats. Headline numbers show how this month compares to last month. |
-| 🎯 **Category Budgets** | Set spending limits per category with green/yellow/red progress bars. |
+| 🎯 **Spending Limits** | An overall monthly limit and/or per-category limits, with green/yellow/red progress bars. |
 | 💸 **Transactions** | Add, edit, delete, search, and filter by type, category, or date range. Income shows as `+`, expenses as `-`, with running totals for the current filter. |
 | 📁 **CSV Import/Export** | Upload bank spreadsheets or download your data as CSV. Uncategorised rows are auto-categorised from their description. |
 | 🏦 **Net Worth & Accounts** | Track assets (checking, savings, 401k, brokerage, real estate) and liabilities (credit cards, mortgages, loans), broken down into Total Assets / Total Liabilities / Net Worth. |
 | 💾 **Backup & Restore** | Download/restore your database file for safekeeping. A daily copy is saved automatically (`finance.db.autobak-<date>`, last 7 days kept), and restores save your prior data as `finance.db.bak`. |
 | 🧠 **AI Advisor** | Chat with an AI that knows your data. Includes 50/30/20 and compound interest calculators. |
-| 🛟 **Safe Deletes** | Removing transactions, accounts, or budgets always asks for confirmation first. |
+| 🛟 **Safe Deletes** | Removing transactions, accounts, or spending limits always asks for confirmation first. |
 
 ---
 
@@ -85,9 +86,10 @@ Use the **sidebar on the left** to switch between views:
 | View | What to do there |
 |---|---|
 | **Dashboard** | See your financial overview. Add data in other tabs first! |
-| **Transactions** | Add income and expenses. Use CSV Import/Export for bulk data. |
-| **Net Worth & Accounts** | Enter current balances for your accounts. Has backup/restore too. |
+| **Transactions** | Add income and expenses, import from your bank, change many at once. |
+| **Net Worth & Accounts** | Enter current balances for your accounts. |
 | **AI Advisor** | Chat with an AI that knows your finances. **Privacy note:** API keys are never saved to disk, and the AI only sees your aggregate totals, never your individual transactions. |
+| **Backup** | Download a copy of all your data, or bring back a copy you saved. |
 
 ---
 
@@ -157,9 +159,10 @@ PersonalFinanceApp/
 ├── .streamlit/
 │   └── config.toml     # Visual theme settings
 ├── views/              # Each screen of the app
-│   ├── dashboard.py    # Dashboard with charts and budgets
+│   ├── dashboard.py    # Dashboard with charts and spending limits
 │   ├── transactions.py # Adding and viewing transactions
-│   ├── accounts.py     # Account balances and backups
+│   ├── accounts.py     # Account balances
+│   ├── backup.py       # Backup page
 │   └── advisor.py      # AI advisor and calculators
 └── tests/              # Automated tests
     ├── conftest.py     # Shared test setup
