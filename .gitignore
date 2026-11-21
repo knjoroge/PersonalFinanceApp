@@ -14,7 +14,7 @@ venv/
 
 # Database
 finance.db
-finance.db.autobak
+finance.db.autobak*
 finance.db.bak
 
 # Streamlit secrets

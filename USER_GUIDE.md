@@ -150,7 +150,7 @@ To use the chat, you need a **Google Gemini API Key** (free). The sidebar has a 
 
 ## 💾 Step 6: Back Up Your Data
 
-Your data lives on your computer, not in the cloud. The app already saves a **daily backup for you automatically** (a file called `finance.db.autobak`), but it's still smart to keep your own copy somewhere safe:
+Your data lives on your computer, not in the cloud. The app already saves a **daily backup for you automatically** (files called `finance.db.autobak-` plus the date, keeping the last 7 days), but it's still smart to keep your own copy somewhere safe:
 
 1. Go to **Net Worth & Accounts**.
 2. Scroll to **💾 Database Backup & Restore**.

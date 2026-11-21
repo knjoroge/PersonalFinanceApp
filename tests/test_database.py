@@ -588,3 +588,27 @@ class TestAutoCategorize:
         imported, _, _ = db.import_transactions_csv(csv)
         assert imported == 1
         assert db.get_all_transactions().iloc[0]['category'] == "Savings"
+
+
+def test_auto_backup_keeps_last_7_days(sample_transactions, monkeypatch):
+    """One backup per day; older ones beyond 7 are deleted; same day isn't repeated."""
+    import glob
+    from datetime import datetime as real_datetime
+
+    # Pretend 9 older daily backups already exist.
+    for day in range(1, 10):
+        open(f"{db.DB_PATH}.autobak-2026-01-{day:02d}", "w").close()
+
+    class FakeNow(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return real_datetime(2026, 2, 1)
+    monkeypatch.setattr(db, "datetime", FakeNow)
+
+    assert db.auto_backup() == f"{db.DB_PATH}.autobak-2026-02-01"
+    assert db.auto_backup() is None  # already done today
+
+    backups = sorted(glob.glob(f"{db.DB_PATH}.autobak-*"))
+    assert len(backups) == 7
+    assert backups[0].endswith("2026-01-04")   # oldest three removed
+    assert backups[-1].endswith("2026-02-01")

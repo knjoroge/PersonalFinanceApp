@@ -65,7 +65,7 @@ You can also type `make` on its own to see all available commands.
 | 💸 **Transactions** | Add, edit, delete, search, and filter by type, category, or date range. Income shows as `+`, expenses as `-`, with running totals for the current filter. |
 | 📁 **CSV Import/Export** | Upload bank spreadsheets or download your data as CSV. Uncategorised rows are auto-categorised from their description. |
 | 🏦 **Net Worth & Accounts** | Track assets (checking, savings, 401k, brokerage, real estate) and liabilities (credit cards, mortgages, loans), broken down into Total Assets / Total Liabilities / Net Worth. |
-| 💾 **Backup & Restore** | Download/restore your database file for safekeeping. A daily copy is saved automatically as `finance.db.autobak`, and restores save your prior data as `finance.db.bak`. |
+| 💾 **Backup & Restore** | Download/restore your database file for safekeeping. A daily copy is saved automatically (`finance.db.autobak-<date>`, last 7 days kept), and restores save your prior data as `finance.db.bak`. |
 | 🧠 **AI Advisor** | Chat with an AI that knows your data. Includes 50/30/20 and compound interest calculators. |
 | 🛟 **Safe Deletes** | Removing transactions, accounts, or budgets always asks for confirmation first. |
 
@@ -130,7 +130,7 @@ python -m pytest tests/ -v --cov=. --cov-report=term-missing
 
 ## Where Is My Data?
 
-Everything is stored in a **local file called `finance.db`** on your computer — nothing goes to the cloud (except AI questions, which go to Google Gemini if you use that feature). The app also keeps a daily safety copy next to it called `finance.db.autobak`.
+Everything is stored in a **local file called `finance.db`** on your computer — nothing goes to the cloud (except AI questions, which go to Google Gemini if you use that feature). The app also keeps daily safety copies next to it for the last 7 days (`finance.db.autobak-<date>`).
 
 Custom storage path:
 ```bash

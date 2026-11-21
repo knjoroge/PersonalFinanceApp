@@ -4,3 +4,8 @@ backgroundColor="#0F172A"
 secondaryBackgroundColor="#1E293B"
 textColor="#F8FAFC"
 font="sans serif"
+
+[server]
+# Only this computer can open the app. Without this, anyone on the same
+# Wi-Fi could open it (there's no password), e.g. in a cafe or office.
+address = "localhost"

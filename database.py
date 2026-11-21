@@ -7,6 +7,7 @@ Handles transactions, accounts, budgets, preferences, CSV import/export, and bac
 
 import sqlite3
 import shutil
+import glob
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Union, Dict
@@ -778,20 +779,20 @@ def import_database(db_bytes: bytes) -> Tuple[bool, str]:
         return False, f"Restore failed: {str(e)}"
 
 
-def auto_backup(max_age_hours: int = 24) -> Optional[str]:
-    """Save a safety copy of the database once a day (finance.db.autobak).
+def auto_backup(keep: int = 7) -> Optional[str]:
+    """Save a safety copy of the database once a day, keeping the last `keep` days.
 
+    Each day gets its own file, e.g. finance.db.autobak-2026-11-21, so a problem
+    you don't notice for a few days hasn't overwritten your only good copy.
     Returns the backup path if one was made, else None.
     """
     if not os.path.exists(DB_PATH):
         return None
 
-    backup_path = DB_PATH + ".autobak"
-    # Already backed up recently? Skip.
+    backup_path = f"{DB_PATH}.autobak-{datetime.now():%Y-%m-%d}"
+    # Already backed up today? Skip.
     if os.path.exists(backup_path):
-        age_hours = (datetime.now().timestamp() - os.path.getmtime(backup_path)) / 3600
-        if age_hours < max_age_hours:
-            return None
+        return None
 
     # Nothing to back up yet.
     with _connect() as conn:
@@ -800,6 +801,11 @@ def auto_backup(max_age_hours: int = 24) -> Optional[str]:
         return None
 
     shutil.copy2(DB_PATH, backup_path)
+
+    # Delete the oldest backups beyond `keep`. The dates in the names sort in order.
+    backups = sorted(glob.glob(f"{DB_PATH}.autobak-*"))
+    for old in backups[:-keep]:
+        os.remove(old)
     return backup_path
 
 
