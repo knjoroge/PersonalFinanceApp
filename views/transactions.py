@@ -243,6 +243,7 @@ def _render_mapping_ui(content: str, analysis: dict) -> None:
         )
 
     c1, c2 = st.columns([3, 1])
+
     # Build the mapping dict from the dropdown choices.
     def _val(x):
         # Turn "(none)" back into a real None so the importer treats it as missing.
@@ -304,7 +305,7 @@ def _render_csv_section() -> None:
             if uploaded is None:
                 return
 
-            content = uploaded.getvalue().decode("utf-8")
+            content = uploaded.getvalue()  # raw bytes; the database module handles encodings
             analysis = db.analyze_csv(content)
 
             if analysis['error']:

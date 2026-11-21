@@ -150,7 +150,8 @@ def _render_budget_tracker(df_trans: pd.DataFrame, budgets_df: pd.DataFrame) -> 
     """
     this_month = _current_month_rows(df_trans)
     df_expenses = this_month[this_month['type'] == 'Expense']
-    expense_by_cat = df_expenses.groupby('category')['amount'].sum() if not df_expenses.empty else pd.Series(dtype=float)
+    expense_by_cat = (df_expenses.groupby('category')['amount'].sum()
+                      if not df_expenses.empty else pd.Series(dtype=float))
 
     st.markdown(f"### 🎯 Category Budget Tracker ({pd.Timestamp.today().strftime('%B %Y')})")
 
@@ -305,7 +306,7 @@ def _render_top_merchants(filtered_df: pd.DataFrame) -> None:
         return
 
     top = (df_expenses.groupby('description')['amount']
-                       .sum().sort_values(ascending=False).head(5).reset_index())
+           .sum().sort_values(ascending=False).head(5).reset_index())
     top.columns = ['Merchant', 'Total spent']
     top['Total spent'] = top['Total spent'].map(lambda v: db.format_money(v))
 

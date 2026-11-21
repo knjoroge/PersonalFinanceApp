@@ -29,3 +29,6 @@ finance.db.bak
 # OS
 .DS_Store
 Thumbs.db
+
+# Test coverage data
+.coverage

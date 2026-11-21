@@ -14,6 +14,27 @@ import database as db
 from google import genai
 from google.genai import types
 
+# Which Gemini model the chat uses. "gemini-flash-latest" always points at
+# Google's current Flash model, so the chat keeps working when old models are
+# retired. Set GEMINI_MODEL in your .env file to pick a specific one.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+
+
+def _friendly_ai_error(error: Exception) -> str:
+    """Turn a Gemini/network error into a plain-English message with a next step."""
+    text = str(error).lower()
+    if "api key" in text or "api_key" in text or "permission" in text or "401" in text or "403" in text:
+        return ("Your Gemini API key didn't work. Check it was copied in full, "
+                "or click **Clear Key** in the sidebar and paste it again.")
+    if "429" in text or "quota" in text or "resource_exhausted" in text or "rate limit" in text:
+        return "The free AI limit has been reached for now. Wait a minute and try again."
+    if "404" in text or "not found" in text:
+        return (f"The AI model `{GEMINI_MODEL}` isn't available. "
+                "Set GEMINI_MODEL in your .env file to a current Gemini model name.")
+    if "connect" in text or "network" in text or "timed out" in text or "timeout" in text:
+        return "Couldn't reach the AI service. Check your internet connection and try again."
+    return f"Something went wrong talking to the AI. Please try again. (Details: {error})"
+
 
 def _top_expense_categories(df_trans: pd.DataFrame, n: int = 3) -> list:
     """Return the top n expense categories by total amount, as (name, total) tuples."""
@@ -226,7 +247,7 @@ def _render_chat_tab(api_key: str, finance_context: str) -> None:
             ]
 
             response = client.models.generate_content(
-                model='gemini-2.5-flash', contents=contents,
+                model=GEMINI_MODEL, contents=contents,
                 config=types.GenerateContentConfig(temperature=0.7)
             )
 
@@ -235,7 +256,7 @@ def _render_chat_tab(api_key: str, finance_context: str) -> None:
         except Exception as e:
             # Roll back the unanswered user message so history stays balanced.
             st.session_state.messages.pop()
-            st.error(f"Error generating response: {str(e)}")
+            st.error(_friendly_ai_error(e))
 
 
 def render_advisor():

@@ -11,6 +11,8 @@ The easiest way — no typing:
 - **macOS:** double-click **`run.command`**
 - **Windows:** double-click **`run.bat`**
 
+You need **Python 3.11 or newer** installed first. Get it free from [python.org](https://www.python.org/downloads/) (on Windows, tick **"Add python.exe to PATH"** during install). If Python is missing or too old, the launcher tells you what to do instead of failing silently.
+
 The first time takes about a minute to set things up. After that it opens the app in your browser each time you double-click.
 
 ---
@@ -20,15 +22,14 @@ The first time takes about a minute to set things up. After that it opens the ap
 Start by telling the app about your bank accounts, retirement funds, investments, **and any debts** — all of these together make up your true net worth.
 
 1. Click **Net Worth & Accounts** in the sidebar.
-2. Type a name for each account (e.g. "Chase Checking", "Fidelity 401k", "Amex Card").
-3. Pick the account type:
-    - **Assets**: Checking, Savings, 401k, Pension, Shares/Brokerage, Real Estate, Other Assets.
-    - **Liabilities**: Credit Card, Mortgage, Loan, Other Liabilities.
-4. Choose **"I own it"** (an asset, like savings) or **"I owe it"** (a debt, like a credit card).
-5. Enter the amount as a normal positive number (e.g. `4500` or `2500`) — the choice above handles owned vs owed for you.
-6. Click **Save Balance Update**.
+2. Leave **Which account?** on **➕ Add a new account** and type a name (e.g. "Chase Checking", "Fidelity 401k", "Amex Card").
+3. Pick the account type. This tells the app whether it's something you own or owe:
+    - **Assets** (you own): Checking, Savings, 401k, Pension, Shares/Brokerage, Real Estate, Other Assets.
+    - **Liabilities** (you owe): Credit Card, Mortgage, Loan, Other Liabilities.
+4. Enter the balance as a normal positive number (e.g. `4500`), even for debts.
+5. Click **Add Account**.
 
-Repeat for each account you want to track. You only need to update these once a month or so.
+Repeat for each account you want to track. You only need to update these once a month or so: pick the account from **Which account?**, type the new balance, and click **Save New Balance**.
 
 The page shows three headline numbers — **Total Assets**, **Total Liabilities**, and **Net Worth** — so you can see what you own and what you owe at a glance. (Liabilities are displayed as a positive amount under their own label; Net Worth is assets minus liabilities.)
 

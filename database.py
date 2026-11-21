@@ -14,8 +14,10 @@ import os
 import io
 import re
 
-# Database file location. Override with FINANCE_DB_PATH env var if needed.
-DB_PATH = os.getenv("FINANCE_DB_PATH", "finance.db")
+# Database file location: finance.db next to this file, so your data is found
+# no matter which folder the app is started from. Override with FINANCE_DB_PATH.
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.getenv("FINANCE_DB_PATH", os.path.join(_APP_DIR, "finance.db"))
 
 
 # --- Shared category and account-type lists ---
@@ -30,8 +32,8 @@ EXPENSE_CATEGORIES = ["Housing", "Food", "Transportation", "Utilities", "Insuran
 # order the lists from most to least specific. Add a bank's common payees here.
 _CATEGORY_KEYWORDS = {
     "Food":           ["grocery", "groceries", "supermarket", "tesco", "aldi", "lidl",
-                        "sainsbury", "walmart", "whole foods", "restaurant", "cafe",
-                        "coffee", "starbucks", "mcdonald", "uber eats", "deliveroo", "doordash"],
+                       "sainsbury", "walmart", "whole foods", "restaurant", "cafe",
+                       "coffee", "starbucks", "mcdonald", "uber eats", "deliveroo", "doordash"],
     "Transportation": ["uber", "lyft", "shell", "bp ", "chevron", "exxon", "fuel", "gas station",
                        "petrol", "parking", "transit", "metro", "train", "airline", "flight"],
     "Housing":        ["rent", "mortgage", "landlord", "hoa"],
@@ -381,9 +383,17 @@ _CSV_ALIASES = {
 
 
 def _decode_csv(content: Union[str, bytes]) -> str:
-    """Convert raw CSV input (bytes or string) into a UTF-8 string."""
+    """Convert raw CSV input (bytes or string) into text.
+
+    Banks and Excel don't all save CSVs the same way, so try the common
+    encodings in turn: UTF-8 (with or without Excel's BOM marker), then
+    Windows-1252, which is what Excel on Windows usually writes (e.g. "Café").
+    """
     if isinstance(content, bytes):
-        return content.decode("utf-8")
+        try:
+            return content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return content.decode("cp1252", errors="replace")
     return content
 
 

@@ -50,7 +50,7 @@ You can also type `make` on its own to see all available commands.
 - **Track every dollar** — Log income and expenses with categories and browse your full history.
 - **Set spending budgets** — Choose a monthly limit for any category and watch colour-coded progress bars.
 - **Import from your bank** — Upload a CSV from your bank to bulk-add transactions, or download your data.
-- **Monitor your net worth** — Enter balances for assets (bank accounts, retirement funds, investments) *and* liabilities (credit cards, mortgages, loans) for a true net-worth picture. Just pick "I own it" or "I owe it" — no negative numbers needed.
+- **Monitor your net worth** — Enter balances for assets (bank accounts, retirement funds, investments) *and* liabilities (credit cards, mortgages, loans) for a true net-worth picture. The account type decides whether it counts as owned or owed — no negative numbers needed.
 - **Back up your data** — Download your entire database to keep a safe copy, and restore it any time. The app also saves a daily backup for you automatically.
 - **Get AI advice** — Ask an AI assistant (powered by Google Gemini) questions about your finances.
 
@@ -74,7 +74,7 @@ You can also type `make` on its own to see all available commands.
 ## What You'll Need
 
 1. **Python 3.11+** — Check with `python --version`. Download from [python.org](https://www.python.org/downloads/) if needed.
-2. **A Gemini API Key** *(optional)* — Only for the AI chat feature. Get one free at [Google AI Studio](https://aistudio.google.com/app/apikey). Either paste it into the sidebar at runtime, or add `GEMINI_API_KEY=your-key` to a `.env` file in the project root and the app will pick it up automatically on startup (the `.env` file is gitignored, so your key stays local).
+2. **A Gemini API Key** *(optional)* — Only for the AI chat feature. Get one free at [Google AI Studio](https://aistudio.google.com/app/apikey). Either paste it into the sidebar at runtime, or add `GEMINI_API_KEY=your-key` to a `.env` file in the project root and the app will pick it up automatically on startup (the `.env` file is gitignored, so your key stays local). The chat uses Google's latest Flash model by default; add `GEMINI_MODEL=model-name` to `.env` to choose a specific one.
 
 ---
 

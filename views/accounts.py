@@ -7,7 +7,7 @@ Download or restore database backups from this page.
 
 import streamlit as st
 import database as db
-from database import ACCOUNT_TYPES
+from database import ACCOUNT_TYPES, LIABILITY_TYPES
 from views._shared import confirm_delete_dialog
 import os
 
@@ -37,43 +37,57 @@ def render_accounts():
     )
 
     # --- Add or update an account ---
+    st.subheader("Update an Account Balance")
+    df = db.get_all_accounts()
+
+    # Pick an existing account (so there's no retyping its exact name each
+    # month) or add a new one. This sits outside the form so choosing an
+    # account instantly pre-fills its type and current balance below.
+    new_label = "➕ Add a new account"
+    existing = {r["name"]: r for _, r in df.iterrows()} if not df.empty else {}
+    choice = st.selectbox("Which account?", [new_label] + list(existing.keys()))
+    current = existing.get(choice)
+
     with st.form("manage_account_form"):
-        st.subheader("Update an Account Balance")
         col1, col2 = st.columns(2)
         with col1:
-            a_name = st.text_input("Account Name (e.g. 'Fidelity 401k')")
-            a_type = st.selectbox("Account Type", ACCOUNT_TYPES)
+            if current is None:
+                a_name = st.text_input("Account Name (e.g. 'Fidelity 401k')")
+            else:
+                a_name = choice
+                st.text_input("Account Name", value=choice, disabled=True)
+            type_idx = 0
+            if current is not None and current["type"] in ACCOUNT_TYPES:
+                type_idx = ACCOUNT_TYPES.index(current["type"])
+            a_type = st.selectbox(
+                "Account Type", ACCOUNT_TYPES, index=type_idx, key=f"acct_type_{choice}",
+                help="Credit Card, Mortgage, Loan and Other Liabilities count as money you owe. "
+                     "Everything else counts as money you own.",
+            )
         with col2:
-            a_kind = st.radio(
-                "Is this something you own or owe?",
-                ["I own it (asset)", "I owe it (liability)"],
-                help="Assets are savings, investments, property. "
-                     "Liabilities are credit cards, loans, mortgages.",
-            )
             a_balance = st.number_input(
-                f"Amount ({db.get_currency()})",
-                min_value=0.00, value=0.00, format="%.2f",
-                help="Just enter the amount as a positive number — "
-                     "the choice above handles owned vs owed.",
+                f"Current balance ({db.get_currency()})",
+                min_value=0.00, format="%.2f", key=f"acct_bal_{choice}",
+                value=abs(float(current["balance"])) if current is not None else 0.00,
+                help="Enter a positive number, even for debts. "
+                     "The account type decides whether it's owned or owed.",
             )
 
-        st.info("If this is a new account, it will be added. If the name already exists (case-insensitive), its balance will be updated.")
-
-        if st.form_submit_button("Save Balance Update", use_container_width=True):
+        button_label = "Add Account" if current is None else "Save New Balance"
+        if st.form_submit_button(button_label, use_container_width=True):
             if not a_name.strip():
-                st.error("Account name cannot be empty.")
+                st.error("Please give the account a name.")
             else:
                 # Liabilities are stored as negative balances so net worth = assets - liabilities.
-                signed_balance = -a_balance if a_kind.startswith("I owe") else a_balance
+                signed_balance = -a_balance if a_type in LIABILITY_TYPES else a_balance
                 db.add_or_update_account(a_name, a_type, signed_balance)
-                st.toast(f"Successfully updated '{a_name}' balance!", icon="✅")
+                st.toast(f"Saved '{a_name.strip()}'!", icon="✅")
                 st.rerun()
 
     st.markdown("---")
 
     # --- View accounts and pick one to delete ---
     st.subheader("Current Asset Breakdown")
-    df = db.get_all_accounts()
 
     # Split into assets (positive balances) and liabilities (negative) so the
     # net-worth number is broken down into "what you own" vs "what you owe".
