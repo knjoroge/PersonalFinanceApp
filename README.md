@@ -71,7 +71,7 @@ You can also type `make` on its own to see all available commands.
 
 ## What You'll Need
 
-1. **Python 3.8+** — Check with `python --version`. Download from [python.org](https://www.python.org/downloads/) if needed.
+1. **Python 3.11+** — Check with `python --version`. Download from [python.org](https://www.python.org/downloads/) if needed.
 2. **A Gemini API Key** *(optional)* — Only for the AI chat feature. Get one free at [Google AI Studio](https://aistudio.google.com/app/apikey). Either paste it into the sidebar at runtime, or add `GEMINI_API_KEY=your-key` to a `.env` file in the project root and the app will pick it up automatically on startup (the `.env` file is gitignored, so your key stays local).
 
 ---
